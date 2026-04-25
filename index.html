@@ -1,0 +1,423 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --g: #0a0e14;
+    --g2: #111820;
+    --g3: #1a2330;
+    --accent: #00e5a0;
+    --accent2: #ff6b35;
+    --gold: #ffc947;
+    --text: #e8f0fe;
+    --muted: #8899aa;
+    --border: rgba(0,229,160,0.15);
+  }
+  #app{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-height:600px;padding:0}
+  .header{background:var(--g2);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+  .logo{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:2px;color:var(--accent)}
+  .logo span{color:var(--accent2)}
+  .balance-pill{background:rgba(0,229,160,0.12);border:1px solid var(--accent);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:600;color:var(--accent)}
+  .balance-pill b{color:#fff}
+  .tabs{display:flex;background:var(--g2);border-bottom:1px solid rgba(255,255,255,0.06)}
+  .tab{padding:10px 16px;font-size:13px;font-weight:600;letter-spacing:0.5px;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted);text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;font-size:14px}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .content{padding:12px}
+  .section-label{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:12px 0 8px}
+  .game-card{background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color 0.2s}
+  .game-card:hover{border-color:var(--border)}
+  .game-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .series-badge{font-size:10px;font-weight:600;letter-spacing:1px;color:var(--muted);text-transform:uppercase}
+  .game-time{font-size:11px;color:var(--accent2)}
+  .game-body{padding:10px 12px;display:flex;align-items:center;gap:8px}
+  .team{flex:1;text-align:center}
+  .team-abbr{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;letter-spacing:1px}
+  .team-name{font-size:10px;color:var(--muted);margin-top:1px}
+  .seed{display:inline-block;background:rgba(255,255,255,0.08);border-radius:3px;font-size:9px;padding:1px 4px;margin-left:4px;color:var(--muted)}
+  .vs-block{text-align:center;min-width:60px}
+  .vs-text{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+  .score-block{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700}
+  .prob-bar{height:4px;background:var(--g3);border-radius:2px;margin:8px 12px;overflow:hidden;display:flex}
+  .prob-home{background:var(--accent);transition:width 0.5s}
+  .prob-away{background:var(--accent2)}
+  .odds-row{display:flex;gap:6px;padding:0 12px 10px}
+  .odd-btn{flex:1;background:var(--g3);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px;cursor:pointer;text-align:center;transition:all 0.15s;position:relative;overflow:hidden}
+  .odd-btn:hover{border-color:var(--accent);background:rgba(0,229,160,0.08)}
+  .odd-btn.selected{border-color:var(--accent);background:rgba(0,229,160,0.15)}
+  .odd-btn.selected::after{content:'✓';position:absolute;top:2px;right:4px;font-size:9px;color:var(--accent)}
+  .odd-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px}
+  .odd-val{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--gold)}
+  .odd-team{font-size:10px;color:var(--text);margin-top:1px}
+  .betslip{position:fixed;bottom:0;left:0;right:0;background:var(--g2);border-top:2px solid var(--accent);padding:10px 14px;display:flex;align-items:center;gap:10px;z-index:100}
+  .slip-count{background:var(--accent);color:#000;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+  .slip-text{font-size:12px;color:var(--muted);flex:1}
+  .slip-stake{display:flex;align-items:center;gap:6px}
+  .slip-input{background:var(--g3);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:var(--text);font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;width:70px;padding:4px 8px;text-align:right}
+  .place-btn{background:var(--accent);color:#000;border:none;border-radius:6px;padding:7px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;text-transform:uppercase;transition:transform 0.1s}
+  .place-btn:hover{transform:scale(1.02)}
+  .potential{font-size:11px;color:var(--accent);text-align:right}
+  .win-flash{animation:flashWin 0.4s ease}
+  @keyframes flashWin{0%{background:rgba(0,229,160,0.3)}100%{background:transparent}}
+  .mini-game{background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:10px;margin-bottom:10px;padding:14px}
+  .mini-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;margin-bottom:4px}
+  .mini-desc{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .crash-area{background:var(--g3);border-radius:8px;height:100px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;margin-bottom:10px;border:1px solid rgba(255,255,255,0.06)}
+  .crash-mult{font-family:'Barlow Condensed',sans-serif;font-size:48px;font-weight:900;color:var(--accent);text-shadow:0 0 20px rgba(0,229,160,0.4)}
+  .crash-mult.crashed{color:var(--accent2);text-shadow:0 0 20px rgba(255,107,53,0.4)}
+  .crash-line{position:absolute;bottom:0;left:0;height:2px;background:var(--accent);width:0%;transition:width 0.1s linear}
+  .crash-line.crashed{background:var(--accent2)}
+  .action-row{display:flex;gap:8px;align-items:center}
+  .crash-input{background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;width:80px}
+  .green-btn{background:var(--accent);color:#000;border:none;border-radius:6px;padding:7px 16px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase}
+  .red-btn{background:var(--accent2);color:#fff;border:none;border-radius:6px;padding:7px 16px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase}
+  .msg{font-size:12px;font-weight:600;margin-left:auto;padding:5px 10px;border-radius:5px}
+  .msg.win{background:rgba(0,229,160,0.15);color:var(--accent)}
+  .msg.lose{background:rgba(255,107,53,0.15);color:var(--accent2)}
+  .flip-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+  .flip-card{aspect-ratio:1;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;transition:all 0.2s;position:relative}
+  .flip-card:hover{border-color:var(--accent)}
+  .flip-card.revealed{background:rgba(0,229,160,0.1);border-color:rgba(0,229,160,0.3)}
+  .flip-card.bomb{background:rgba(255,107,53,0.15);border-color:var(--accent2)}
+  .flip-card.safe{background:rgba(0,229,160,0.15);border-color:var(--accent)}
+  .hist-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+  .hist-dot{width:24px;height:24px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif}
+  .scroll-content{padding-bottom:70px}
+  .live-dot{width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;margin-right:4px}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
+  .status-live{display:flex;align-items:center;font-size:10px;font-weight:600;color:#f66;letter-spacing:1px}
+  .status-sched{font-size:10px;color:var(--muted)}
+  .series-record{font-family:'Barlow Condensed',sans-serif;font-size:12px;color:var(--muted);text-align:center;padding:2px 12px 8px}
+</style>
+
+<div id="app">
+  <div class="header">
+    <div class="logo">ODDS<span>X</span></div>
+    <div class="balance-pill">Balance: <b id="bal">KSH 5,000</b></div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('sports')">🏀 NBA Playoffs</div>
+    <div class="tab" onclick="showTab('crash')">📈 Crash</div>
+    <div class="tab" onclick="showTab('mines')">💣 Mines</div>
+    <div class="tab" onclick="showTab('slip')">🎫 Slip (<span id="slip-count">0</span>)</div>
+  </div>
+  <div class="scroll-content">
+    <div id="tab-sports" class="content"></div>
+    <div id="tab-crash" class="content" style="display:none"></div>
+    <div id="tab-mines" class="content" style="display:none"></div>
+    <div id="tab-slip" class="content" style="display:none"></div>
+  </div>
+  <div class="betslip" id="betslip" style="display:none">
+    <div class="slip-count" id="slip-cnt">0</div>
+    <div style="flex:1">
+      <div style="font-size:11px;font-weight:600;color:var(--text)">Bet Slip</div>
+      <div class="potential" id="pot-return"></div>
+    </div>
+    <div class="slip-stake">
+      <span style="font-size:11px;color:var(--muted)">KSH</span>
+      <input class="slip-input" type="number" id="stake" value="200" min="50" step="50" oninput="calcReturn()">
+    </div>
+    <button class="place-btn" onclick="placeBet()">Place Bet</button>
+  </div>
+</div>
+
+<script>
+const GAMES = [
+  {id:'orl-det',home:'ORL',away:'DET',homeN:'Orlando Magic',awayN:'Detroit Pistons',homeSeed:8,awaySeed:1,status:'scheduled',time:'Sat Apr 25, 8:00 PM EAT',series:'Game 3 — DET leads 1-1',homeProb:46,awayProb:54,homeOdds:'+185',awayOdds:'-210',ouOdds:'+108/-112',total:'215.5'},
+  {id:'phx-okc',home:'PHX',away:'OKC',homeN:'Phoenix Suns',awayN:'OKC Thunder',homeSeed:8,awaySeed:1,status:'scheduled',time:'Sat Apr 25, 10:30 PM EAT',series:'Game 3 — OKC leads 2-0',homeProb:21,awayProb:79,homeOdds:'+420',awayOdds:'-560',ouOdds:'+105/-115',total:'222.5'},
+  {id:'atl-nyk',home:'ATL',away:'NYK',homeN:'Atlanta Hawks',awayN:'New York Knicks',homeSeed:6,awaySeed:3,status:'scheduled',time:'Sun Apr 26, 1:00 AM EAT',series:'Game 4 — ATL leads 2-1',homeProb:47,awayProb:53,homeOdds:'+162',awayOdds:'-185',ouOdds:'+102/-118',total:'218.5'},
+  {id:'min-den',home:'MIN',away:'DEN',homeN:'Minnesota Timberwolves',awayN:'Denver Nuggets',homeSeed:6,awaySeed:3,status:'scheduled',time:'Sun Apr 26, 3:30 AM EAT',series:'Game 4 — MIN leads 2-1',homeProb:48,awayProb:52,homeOdds:'+145',awayOdds:'-168',ouOdds:'-108/-108',total:'224.5'},
+  {id:'bos-phi',home:'PHI',away:'BOS',homeN:'Philadelphia 76ers',awayN:'Boston Celtics',homeSeed:7,awaySeed:2,status:'scheduled',time:'Mon Apr 27, 2:00 AM EAT',series:'Game 4 — BOS leads 2-1',homeProb:28,awayProb:72,homeOdds:'+320',awayOdds:'-400',ouOdds:'+108/-120',total:'213.5'},
+  {id:'hou-lal',home:'HOU',away:'LAL',homeN:'Houston Rockets',awayN:'LA Lakers',homeSeed:5,awaySeed:4,status:'scheduled',time:'Mon Apr 27, 4:30 AM EAT',series:'Game 4 — LAL leads 3-0',homeProb:64,awayProb:36,homeOdds:'+115',awayOdds:'-138',ouOdds:'-105/-115',total:'210.5'},
+];
+
+let selections = {};
+let balance = 5000;
+
+function showTab(t){
+  document.querySelectorAll('.tab').forEach((el,i)=>{el.classList.toggle('active',['sports','crash','mines','slip'][i]===t)});
+  ['sports','crash','mines','slip'].forEach(id=>document.getElementById('tab-'+id).style.display=id===t?'block':'none');
+  document.getElementById('betslip').style.display=(t==='slip'||Object.keys(selections).length===0)?'none':'flex';
+  if(t==='slip') renderSlip();
+}
+
+function renderSports(){
+  const el = document.getElementById('tab-sports');
+  el.innerHTML = `<div class="section-label">Today & Upcoming — NBA Playoffs 2026</div>`;
+  GAMES.forEach(g=>{
+    const sel = selections[g.id];
+    el.innerHTML += `
+    <div class="game-card" id="card-${g.id}">
+      <div class="game-header">
+        <span class="series-badge">🏀 ${g.series}</span>
+        <span class="game-time">${g.time}</span>
+      </div>
+      <div class="game-body">
+        <div class="team">
+          <div class="team-abbr">${g.away}<span class="seed">${g.awaySeed}</span></div>
+          <div class="team-name">${g.awayN}</div>
+        </div>
+        <div class="vs-block"><div class="vs-text">vs</div></div>
+        <div class="team">
+          <div class="team-abbr">${g.home}<span class="seed">${g.homeSeed}</span></div>
+          <div class="team-name">${g.homeN}</div>
+        </div>
+      </div>
+      <div class="prob-bar">
+        <div class="prob-home" style="width:${g.awayProb}%"></div>
+        <div class="prob-away" style="width:${g.homeProb}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:0 12px 4px;font-size:10px;color:var(--muted)">
+        <span>${g.awayProb}% ${g.away}</span><span>${g.homeProb}% ${g.home}</span>
+      </div>
+      <div class="odds-row">
+        <div class="odd-btn ${sel==='away'?'selected':''}" onclick="select('${g.id}','away','${g.away} ML','${g.awayOdds}')">
+          <div class="odd-label">${g.away} Win</div>
+          <div class="odd-val">${g.awayOdds}</div>
+          <div class="odd-team">${g.awayN}</div>
+        </div>
+        <div class="odd-btn ${sel==='over'?'selected':''}" onclick="select('${g.id}','over','Over ${g.total}','${g.ouOdds.split('/')[0]}')">
+          <div class="odd-label">Over ${g.total}</div>
+          <div class="odd-val">${g.ouOdds.split('/')[0]}</div>
+          <div class="odd-team">Total Points</div>
+        </div>
+        <div class="odd-btn ${sel==='home'?'selected':''}" onclick="select('${g.id}','home','${g.home} ML','${g.homeOdds}')">
+          <div class="odd-label">${g.home} Win</div>
+          <div class="odd-val">${g.homeOdds}</div>
+          <div class="odd-team">${g.homeN}</div>
+        </div>
+      </div>
+    </div>`;
+  });
+}
+
+function select(gameId, type, label, odds){
+  if(selections[gameId]===type){delete selections[gameId]}
+  else{selections[gameId]={type,label,odds,gameId}}
+  updateSlipCount();
+  renderSports();
+  document.getElementById('betslip').style.display=Object.keys(selections).length>0?'flex':'none';
+  calcReturn();
+}
+
+function updateSlipCount(){
+  const n=Object.keys(selections).length;
+  document.getElementById('slip-count').textContent=n;
+  document.getElementById('slip-cnt').textContent=n;
+}
+
+function oddsToDecimal(o){
+  o=o.trim();
+  if(o.startsWith('+'))return 1+parseInt(o.slice(1))/100;
+  if(o.startsWith('-'))return 1+100/Math.abs(parseInt(o.slice(1)));
+  return parseFloat(o);
+}
+
+function calcReturn(){
+  const stake=parseFloat(document.getElementById('stake').value)||0;
+  const bets=Object.values(selections);
+  if(!bets.length)return;
+  let mult=bets.reduce((a,b)=>a*oddsToDecimal(b.odds),1);
+  const ret=(stake*mult).toFixed(0);
+  document.getElementById('pot-return').textContent=`Potential: KSH ${parseInt(ret).toLocaleString()}`;
+}
+
+function renderSlip(){
+  const el=document.getElementById('tab-slip');
+  const bets=Object.values(selections);
+  if(!bets.length){el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">No bets selected yet.<br><br><button onclick="showTab('sports')" class="green-btn">Browse Games</button></div>`;return}
+  let stake=parseFloat(document.getElementById('stake').value)||200;
+  let mult=bets.reduce((a,b)=>a*oddsToDecimal(b.odds),1);
+  el.innerHTML=`<div class="section-label">Your Bet Slip (${bets.length} selection${bets.length>1?'s':''})</div>`;
+  bets.forEach(b=>{
+    el.innerHTML+=`<div class="game-card" style="padding:10px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:13px;font-weight:600">${b.label}</div><div style="font-size:11px;color:var(--muted)">NBA Playoffs 2026</div></div>
+      <div style="text-align:right"><div class="odd-val">${b.odds}</div><div style="font-size:9px;color:var(--muted)">odds</div></div>
+    </div>`;
+  });
+  el.innerHTML+=`<div style="background:var(--g2);border-radius:8px;padding:12px;margin-top:10px;border:1px solid var(--border)">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--muted);font-size:12px">Total Odds</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--gold)">${mult.toFixed(2)}x</span></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="color:var(--muted);font-size:12px">Stake (KSH)</span><input class="slip-input" type="number" id="stake2" value="${stake}" oninput="document.getElementById('stake').value=this.value;calcReturn()" style="width:90px"></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)"><span style="font-size:13px;font-weight:600">Potential Return</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--accent)">KSH ${(stake*mult).toFixed(0)*1|0}</span></div>
+    <button class="place-btn" style="width:100%;padding:10px" onclick="placeBet()">Place Accumulator Bet</button>
+  </div>`;
+}
+
+function placeBet(){
+  const stake=parseFloat(document.getElementById('stake').value)||0;
+  if(stake<50){alert('Minimum stake is KSH 50');return}
+  if(stake>balance){alert('Insufficient balance');return}
+  const bets=Object.values(selections);
+  let mult=bets.reduce((a,b)=>a*oddsToDecimal(b.odds),1);
+  const win=Math.random()>0.55;
+  balance-=stake;
+  if(win){balance+=Math.round(stake*mult)}
+  selections={};updateSlipCount();
+  document.getElementById('betslip').style.display='none';
+  document.getElementById('bal').textContent=`KSH ${balance.toLocaleString()}`;
+  if(win){
+    const el=document.getElementById('tab-slip');
+    el.innerHTML=`<div style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--accent)">BET WON!</div><div style="color:var(--muted);margin:8px 0 16px">+KSH ${Math.round(stake*mult-stake).toLocaleString()} profit</div><button onclick="showTab('sports')" class="green-btn">Place Another</button></div>`;
+  } else {
+    const el=document.getElementById('tab-slip');
+    el.innerHTML=`<div style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:12px">😔</div><div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--accent2)">BET LOST</div><div style="color:var(--muted);margin:8px 0 16px">-KSH ${stake.toLocaleString()} lost</div><button onclick="showTab('sports')" class="green-btn">Try Again</button></div>`;
+  }
+  renderSports();
+}
+
+// CRASH GAME
+let crashState='idle', crashMult=1.0, crashInterval=null, crashTarget=0;
+function renderCrash(){
+  const el=document.getElementById('tab-crash');
+  el.innerHTML=`
+    <div class="mini-game">
+      <div class="mini-title">📈 Crash</div>
+      <div class="mini-desc">Cash out before the rocket crashes! The longer you wait, the bigger the multiplier.</div>
+      <div class="crash-area">
+        <div class="crash-mult" id="cmult">1.00x</div>
+        <div class="crash-line" id="cline"></div>
+      </div>
+      <div class="action-row">
+        <span style="font-size:11px;color:var(--muted)">KSH</span>
+        <input class="crash-input" type="number" id="c-stake" value="200" min="50">
+        <button class="green-btn" id="c-start" onclick="crashStart()">Bet & Launch</button>
+        <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">Cash Out</button>
+        <span class="msg" id="c-msg"></span>
+      </div>
+      <div style="margin-top:12px"><div class="section-label">Recent rounds</div><div class="hist-row" id="c-hist"></div></div>
+    </div>`;
+  renderCrashHist();
+}
+
+let crashHistory=[];
+function renderCrashHist(){
+  const el=document.getElementById('c-hist');
+  if(!el)return;
+  el.innerHTML=crashHistory.slice(-12).map(v=>`<div class="hist-dot" style="background:${v>2?'rgba(0,229,160,0.2)':'rgba(255,107,53,0.2)'};color:${v>2?'var(--accent)':'var(--accent2)'}">${v.toFixed(1)}</div>`).join('');
+}
+
+function crashStart(){
+  if(crashState!=='idle')return;
+  const stake=parseFloat(document.getElementById('c-stake').value)||0;
+  if(stake>balance){document.getElementById('c-msg').textContent='Low balance';return}
+  balance-=stake;
+  document.getElementById('bal').textContent=`KSH ${balance.toLocaleString()}`;
+  crashState='running';crashMult=1.0;
+  crashTarget=1.1+Math.random()*7*(Math.random()<0.2?0.3:1);
+  document.getElementById('c-start').style.display='none';
+  document.getElementById('c-cash').style.display='inline-block';
+  document.getElementById('c-msg').textContent='';
+  const line=document.getElementById('cline');
+  const multEl=document.getElementById('cmult');
+  line.className='crash-line';
+  crashInterval=setInterval(()=>{
+    crashMult=+(crashMult*1.018).toFixed(2);
+    multEl.textContent=crashMult.toFixed(2)+'x';
+    line.style.width=Math.min(95,10+crashMult*8)+'%';
+    if(crashMult>=crashTarget){
+      clearInterval(crashInterval);
+      crashState='crashed';
+      multEl.className='crash-mult crashed';
+      multEl.textContent='CRASHED '+crashMult.toFixed(2)+'x';
+      line.className='crash-line crashed';
+      document.getElementById('c-cash').style.display='none';
+      document.getElementById('c-start').style.display='inline-block';
+      document.getElementById('c-start').textContent='Try Again';
+      const msg=document.getElementById('c-msg');
+      msg.textContent='-KSH '+stake;msg.className='msg lose';
+      crashHistory.push(crashMult);renderCrashHist();
+      setTimeout(()=>{crashState='idle';multEl.className='crash-mult';multEl.textContent='1.00x';line.style.width='0%'},2000);
+    }
+  },80);
+}
+
+function crashCash(){
+  if(crashState!=='running')return;
+  clearInterval(crashInterval);crashState='idle';
+  const stake=parseFloat(document.getElementById('c-stake').value)||200;
+  const win=Math.round(stake*crashMult);
+  balance+=win;
+  document.getElementById('bal').textContent=`KSH ${balance.toLocaleString()}`;
+  document.getElementById('c-cash').style.display='none';
+  document.getElementById('c-start').style.display='inline-block';
+  document.getElementById('c-start').textContent='Bet & Launch';
+  const msg=document.getElementById('c-msg');
+  msg.textContent='+KSH '+win;msg.className='msg win';
+  crashHistory.push(crashMult);renderCrashHist();
+}
+
+// MINES
+let mineGrid=[], mineRevealed=0, mineStake=0, mineMult=1, mineActive=false;
+const BOMBS=3, TOTAL=16;
+function renderMines(){
+  const el=document.getElementById('tab-mines');
+  el.innerHTML=`
+    <div class="mini-game">
+      <div class="mini-title">💣 Mines</div>
+      <div class="mini-desc">Reveal gems to multiply your bet. Hit a bomb and lose it all. 3 bombs hidden in 16 tiles.</div>
+      <div class="flip-grid" id="m-grid"></div>
+      <div class="action-row" style="margin-bottom:10px">
+        <span style="font-size:11px;color:var(--muted)">KSH</span>
+        <input class="crash-input" type="number" id="m-stake" value="300" min="50" ${mineActive?'disabled':''}>
+        <button class="green-btn" id="m-start" onclick="${mineActive?'mineCash()':'mineStart()'}" style="background:${mineActive?'var(--gold)':'var(--accent)'}">
+          ${mineActive?'Cash Out '+mineMult.toFixed(2)+'x':'Start Game'}
+        </button>
+        <span class="msg" id="m-msg"></span>
+      </div>
+    </div>`;
+  renderMineGrid();
+}
+
+function renderMineGrid(){
+  const el=document.getElementById('m-grid');
+  if(!el)return;
+  el.innerHTML='';
+  for(let i=0;i<TOTAL;i++){
+    const div=document.createElement('div');
+    div.className='flip-card';
+    if(mineGrid[i]==='revealed-gem'){div.className+=' safe';div.textContent='💎'}
+    else if(mineGrid[i]==='revealed-bomb'){div.className+=' bomb';div.textContent='💣'}
+    else{div.textContent='?';if(mineActive)div.onclick=()=>mineReveal(i)}
+    el.appendChild(div);
+  }
+}
+
+function mineStart(){
+  const stake=parseFloat(document.getElementById('m-stake').value)||0;
+  if(stake<50||stake>balance)return;
+  balance-=stake;mineStake=stake;mineRevealed=0;mineMult=1;mineActive=true;
+  document.getElementById('bal').textContent=`KSH ${balance.toLocaleString()}`;
+  mineGrid=Array(TOTAL).fill('hidden');
+  let bombs=[...Array(TOTAL).keys()].sort(()=>Math.random()-0.5).slice(0,BOMBS);
+  mineGrid._bombs=bombs;
+  renderMines();
+}
+
+function mineReveal(i){
+  if(!mineActive||mineGrid[i]!=='hidden')return;
+  if(mineGrid._bombs.includes(i)){
+    mineGrid[i]='revealed-bomb';
+    mineGrid._bombs.forEach(b=>mineGrid[b]='revealed-bomb');
+    mineActive=false;
+    renderMines();
+    document.getElementById('m-msg').innerHTML=`<span class="msg lose">-KSH ${mineStake.toLocaleString()}</span>`;
+  } else {
+    mineGrid[i]='revealed-gem';mineRevealed++;
+    mineMult=+(1+mineRevealed*0.35).toFixed(2);
+    renderMines();
+  }
+}
+
+function mineCash(){
+  if(!mineActive)return;
+  mineActive=false;
+  const win=Math.round(mineStake*mineMult);
+  balance+=win;
+  document.getElementById('bal').textContent=`KSH ${balance.toLocaleString()}`;
+  renderMines();
+  document.getElementById('m-msg').innerHTML=`<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
+}
+
+renderSports();
+renderCrash();
+renderMines();
+</script>
