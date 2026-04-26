@@ -300,33 +300,109 @@ let currentSport = 'epl';
 let refreshTimer = null;
 
 // ─── SPORTS CONFIG ───
-// League IDs verified from thesportsdb.com/sport/leagues
+// All data from ESPN's free undocumented API — no key required
 const SPORTS = [
-  { id: 'epl',        label: '🏴 EPL',        leagueId: '4328', sport: 'Soccer',           name: 'English Premier League' },
-  { id: 'laliga',     label: '🇪🇸 La Liga',   leagueId: '4335', sport: 'Soccer',           name: 'La Liga' },
-  { id: 'ucl',        label: '🏆 UCL',         leagueId: '4480', sport: 'Soccer',           name: 'UEFA Champions League' },
-  { id: 'serieA',     label: '🇮🇹 Serie A',   leagueId: '4332', sport: 'Soccer',           name: 'Serie A' },
-  { id: 'bundesliga', label: '🇩🇪 Bundesliga',leagueId: '4331', sport: 'Soccer',           name: 'Bundesliga' },
-  { id: 'nba',        label: '🏀 NBA',         leagueId: '4387', sport: 'Basketball',       name: 'NBA' },
-  { id: 'nfl',        label: '🏈 NFL',         leagueId: '4391', sport: 'American Football', name: 'NFL' },
+  { id:'epl',        label:'🏴 EPL',        name:'English Premier League', espn:'soccer/eng.1',        isSoccer:true  },
+  { id:'laliga',     label:'🇪🇸 La Liga',   name:'La Liga',               espn:'soccer/esp.1',        isSoccer:true  },
+  { id:'ucl',        label:'🏆 UCL',         name:'UEFA Champions League', espn:'soccer/uefa.champions',isSoccer:true  },
+  { id:'serieA',     label:'🇮🇹 Serie A',   name:'Serie A',               espn:'soccer/ita.1',        isSoccer:true  },
+  { id:'bundesliga', label:'🇩🇪 Bundesliga',name:'Bundesliga',            espn:'soccer/ger.1',        isSoccer:true  },
+  { id:'nba',        label:'🏀 NBA',         name:'NBA Playoffs',          espn:'basketball/nba',      isSoccer:false },
+  { id:'nfl',        label:'🏈 NFL',         name:'NFL',                   espn:'football/nfl',        isSoccer:false },
 ];
 
+// ─── ESPN API FETCH ───
+// site.api.espn.com is ESPN's free undocumented public API — no key, no limits
+async function fetchESPN(sportPath) {
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.events || [];
+  } catch(e) {
+    console.error('ESPN fetch error:', e);
+    return [];
+  }
+}
+
+function parseESPNEvent(ev, sport) {
+  const comp = ev.competitions?.[0];
+  if (!comp) return null;
+
+  const home = comp.competitors?.find(c => c.homeAway === 'home');
+  const away = comp.competitors?.find(c => c.homeAway === 'away');
+  if (!home || !away) return null;
+
+  const status = ev.status?.type;
+  const isLive = status?.state === 'in';
+  const isFinal = status?.state === 'post';
+  const isScheduled = status?.state === 'pre';
+
+  // Series info for playoffs
+  const seriesSummary = ev.competitions?.[0]?.series?.summary || null;
+  const seriesNote = comp.notes?.[0]?.headline || null;
+
+  // Game time in EAT (UTC+3)
+  let timeDisplay = 'TBC';
+  if (ev.date) {
+    try {
+      const d = new Date(ev.date);
+      timeDisplay = d.toLocaleDateString('en-KE', {
+        weekday:'short', day:'numeric', month:'short',
+        hour:'2-digit', minute:'2-digit', timeZone:'Africa/Nairobi'
+      }) + ' EAT';
+    } catch(e) {}
+  }
+
+  const odds = generateOdds(home.team?.displayName, away.team?.displayName);
+
+  return {
+    id: ev.id,
+    homeTeam: home.team?.displayName || 'Home',
+    awayTeam: away.team?.displayName || 'Away',
+    homeAbbr: home.team?.abbreviation || '???',
+    awayAbbr: away.team?.abbreviation || '???',
+    homeLogo: home.team?.logo || '',
+    awayLogo: away.team?.logo || '',
+    homeScore: home.score ?? null,
+    awayScore: away.score ?? null,
+    homeRecord: comp.competitors?.find(c=>c.homeAway==='home')?.records?.[0]?.summary || '',
+    awayRecord: comp.competitors?.find(c=>c.homeAway==='away')?.records?.[0]?.summary || '',
+    isLive, isFinal, isScheduled,
+    statusDetail: status?.shortDetail || '',
+    timeDisplay,
+    series: seriesSummary,
+    seriesNote,
+    isSoccer: sport.isSoccer,
+    sportName: sport.name,
+    sportId: sport.id,
+    ...odds,
+  };
+}
+
 // ─── ODDS GENERATOR ───
-// Generates realistic odds from a win probability (0-100)
+// We generate our own odds like a real bookmaker — not fetched from external sources
 function probToAmericanOdds(prob) {
   prob = Math.max(5, Math.min(95, prob));
   if (prob >= 50) return '-' + Math.round((prob / (100 - prob)) * 100);
   return '+' + Math.round(((100 - prob) / prob) * 100);
 }
 
-function generateOdds(event) {
-  // Use TheSportsDB intHomeScore/intAwayScore fields if available for form
-  // Otherwise base it on home advantage (home teams win ~54% in most leagues)
-  const homeProb = 45 + Math.floor(Math.random() * 20); // 45-65%
+// Seed a pseudo-random number from a string so odds are consistent per match
+function seededRand(str, offset = 0) {
+  let h = offset;
+  for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+function generateOdds(homeTeam = '', awayTeam = '') {
+  const seed = homeTeam + awayTeam;
+  // Home advantage baseline: 52-58% win probability for home team
+  const homeProb = 46 + Math.round(seededRand(seed, 1) * 18);
+  const drawProb = 18 + Math.round(seededRand(seed, 2) * 14); // 18-32%
   const awayProb = 100 - homeProb;
-  const drawProb = Math.floor(Math.random() * 20 + 15); // 15-35% draw
-  const adjHome = homeProb - drawProb / 2;
-  const adjAway = awayProb - drawProb / 2;
+  const adjHome = homeProb - drawProb * 0.4;
+  const adjAway = awayProb - drawProb * 0.6;
   return {
     homeProb: Math.round(adjHome),
     awayProb: Math.round(adjAway),
@@ -337,202 +413,7 @@ function generateOdds(event) {
   };
 }
 
-// ─── THESPORTSDB FETCH ───
-// Free key "3" only returns 1 event from eventsnextleague — useless for a feed.
-// Instead we use eventsday.php (up to 5 events free) across today + next 6 days,
-// filtered by sport name. This gives us a real multi-day fixture list.
-async function fetchFixtures(leagueId, sportName) {
-  const results = [];
-  const today = new Date();
 
-  // Fetch today + next 6 days in parallel
-  const fetches = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
-    // eventsday.php: free limit 5, filter by sport
-    const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=${encodeURIComponent(sportName)}`;
-    fetches.push(fetch(url).then(r => r.json()).catch(() => ({ events: null })));
-  }
-
-  const responses = await Promise.all(fetches);
-  for (const data of responses) {
-    if (data.events) {
-      for (const ev of data.events) {
-        // Only include events from the requested league
-        if (String(ev.idLeague) === String(leagueId)) {
-          results.push(ev);
-        }
-      }
-    }
-  }
-  return results;
-}
-
-function formatEventTime(dateStr, timeStr) {
-  if (!dateStr) return 'TBC';
-  try {
-    const dt = new Date(`${dateStr}T${timeStr || '00:00:00'}Z`);
-    return dt.toLocaleDateString('en-KE', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Africa/Nairobi' }) + ' EAT';
-  } catch(e) { return dateStr; }
-}
-
-function getTeamAbbr(name) {
-  if (!name) return '???';
-  const words = name.trim().split(' ');
-  if (words.length === 1) return name.slice(0, 3).toUpperCase();
-  if (words.length === 2) return (words[0][0] + words[1].slice(0,2)).toUpperCase();
-  return words.map(w => w[0]).join('').slice(0, 3).toUpperCase();
-}
-
-// ─── AUTH ───
-async function init() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) await loadUser(session.user);
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) await loadUser(session.user);
-    else showAuthScreen();
-  });
-}
-
-async function loadUser(user) {
-  currentUser = user;
-  let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
-  if (!profile) {
-    await sb.from('profiles').insert({ id: user.id, email: user.email, full_name: user.user_metadata?.full_name || '', balance: 1000 });
-    ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
-  }
-  userBalance = profile?.balance || 0;
-  const init = (profile?.full_name || user.email || '?')[0].toUpperCase();
-  document.getElementById('avatar-init').textContent = init;
-  document.getElementById('dd-email').textContent = user.email;
-  document.getElementById('auth-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  updateBalanceDisplay();
-  initSports();
-  renderCrash();
-  renderMines();
-}
-
-function showAuthScreen() {
-  currentUser = null;
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('main-app').style.display = 'none';
-}
-
-function switchAuthTab(t) {
-  document.querySelectorAll('.auth-tab').forEach((el,i)=>el.classList.toggle('active',['login','signup'][i]===t));
-  document.getElementById('login-form').style.display = t==='login'?'block':'none';
-  document.getElementById('signup-form').style.display = t==='signup'?'block':'none';
-  clearAuthMessages();
-}
-
-function showAuthError(msg) {
-  const el = document.getElementById('auth-error');
-  el.textContent = msg; el.style.display = 'block';
-  document.getElementById('auth-success').style.display = 'none';
-}
-function showAuthSuccess(msg) {
-  const el = document.getElementById('auth-success');
-  el.textContent = msg; el.style.display = 'block';
-  document.getElementById('auth-error').style.display = 'none';
-}
-function clearAuthMessages() {
-  document.getElementById('auth-error').style.display = 'none';
-  document.getElementById('auth-success').style.display = 'none';
-}
-
-async function withTimeout(promise, ms = 8000) {
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out. Check your internet connection.')), ms));
-  return Promise.race([promise, timeout]);
-}
-
-async function signIn() {
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-  if (!email || !password) return showAuthError('Please fill in all fields');
-  if (!email.includes('@')) return showAuthError('Enter a valid email address');
-  const btn = document.querySelector('#login-form .auth-btn');
-  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
-  clearAuthMessages();
-  try {
-    const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
-    if (error) showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
-  } catch(e) {
-    showAuthError(e.message);
-  }
-  btn.disabled = false; btn.textContent = 'Sign In';
-}
-
-async function signUp() {
-  const name = document.getElementById('signup-name').value.trim();
-  const email = document.getElementById('signup-email').value.trim();
-  const password = document.getElementById('signup-password').value;
-  if (!name || !email || !password) return showAuthError('Please fill in all fields');
-  if (!email.includes('@')) return showAuthError('Enter a valid email address');
-  if (password.length < 6) return showAuthError('Password must be at least 6 characters');
-  const btn = document.querySelector('#signup-form .auth-btn');
-  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating account...';
-  clearAuthMessages();
-  try {
-    const { error } = await withTimeout(sb.auth.signUp({ email, password, options: { data: { full_name: name } } }));
-    if (error) showAuthError(error.message);
-    else showAuthSuccess('Account created! You can now sign in.');
-  } catch(e) {
-    showAuthError(e.message);
-  }
-  btn.disabled = false; btn.textContent = 'Create Account';
-}
-
-async function signInGoogle() {
-  await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-}
-
-async function signOut() {
-  await sb.auth.signOut();
-  toggleDropdown(true);
-}
-
-function toggleDropdown(forceClose) {
-  const dd = document.getElementById('dropdown');
-  dd.classList.toggle('open', forceClose ? false : !dd.classList.contains('open'));
-}
-document.addEventListener('click', e => {
-  if (!document.getElementById('avatar-btn')?.contains(e.target))
-    document.getElementById('dropdown')?.classList.remove('open');
-});
-
-// ─── BALANCE ───
-function updateBalanceDisplay() {
-  document.getElementById('bal-display').textContent = `KSH ${userBalance.toLocaleString()}`;
-}
-
-async function refreshBalance() {
-  const { data } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
-  if (data) { userBalance = data.balance; updateBalanceDisplay(); }
-}
-
-async function updateBalance(newBalance, txType, txAmount, txLabel) {
-  await sb.from('profiles').update({ balance: newBalance }).eq('id', currentUser.id);
-  await sb.from('transactions').insert({ user_id: currentUser.id, type: txType, amount: txAmount, label: txLabel, balance_after: newBalance });
-  userBalance = newBalance;
-  updateBalanceDisplay();
-}
-
-// ─── TABS ───
-function showTab(t) {
-  const tabs = ['sports','crash','mines','wallet','history'];
-  tabs.forEach(id => document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none');
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
-  const hasSlip = Object.keys(selections).length > 0;
-  document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
-  document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
-  if (t==='wallet') renderWallet();
-  if (t==='history') renderHistory();
-}
-
-// ─── SPORTS INIT ───
 function initSports() {
   renderSportChips();
   loadSport(currentSport);
@@ -548,12 +429,11 @@ function renderSportChips() {
 async function switchSport(id) {
   if (id === currentSport) return;
   currentSport = id;
-  // Update active chip using data-sport attribute — reliable, no emoji issues
   document.querySelectorAll('.sport-chip').forEach(el => {
     el.classList.toggle('active', el.dataset.sport === id);
   });
   if (refreshTimer) clearTimeout(refreshTimer);
-  liveGames = []; // clear old games immediately
+  liveGames = [];
   await loadSport(id);
 }
 
@@ -564,75 +444,86 @@ async function loadSport(id) {
   el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">
     <div style="font-size:28px;margin-bottom:8px">⏳</div>
     <div style="font-weight:600;margin-bottom:4px">Loading ${sport.name}</div>
-    <div style="font-size:12px">Fetching next 7 days of fixtures...</div>
+    <div style="font-size:12px;color:var(--muted)">Fetching live data from ESPN...</div>
   </div>`;
-  
-  const events = await fetchFixtures(sport.leagueId, sport.sport);
-  
-  // If wrong sport came back or empty, show clear message
-  if (!events.length) {
+
+  const rawEvents = await fetchESPN(sport.espn);
+  liveGames = rawEvents.map(ev => parseESPNEvent(ev, sport)).filter(Boolean);
+
+  if (!liveGames.length) {
     el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">
       <div style="font-size:32px;margin-bottom:12px">📭</div>
-      <div style="font-weight:600;margin-bottom:6px">No upcoming ${sport.name} fixtures right now</div>
+      <div style="font-weight:600;margin-bottom:6px">No ${sport.name} games right now</div>
       <div style="font-size:12px">This may be off-season or between rounds. Try another league.</div>
     </div>`;
-    liveGames = [];
     return;
   }
 
-  const isSoccer = sport.sport === 'Soccer';
-  liveGames = events.slice(0, 12).map(ev => {
-    const odds = generateOdds(ev);
-    return { ...ev, ...odds, isSoccer, sportId: id, sportName: sport.name };
-  });
   renderSports();
-  // Auto-refresh every 5 minutes
   if (refreshTimer) clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => loadSport(currentSport), 5 * 60 * 1000);
+  refreshTimer = setTimeout(() => loadSport(currentSport), 60 * 1000); // refresh every 60s
 }
 
 // ─── SPORTS RENDER ───
 function renderSports() {
   const el = document.getElementById('tab-sports');
   const sport = SPORTS.find(s => s.id === currentSport);
-  if (!liveGames.length) {
-    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">No upcoming fixtures found for ${sport?.name}.<br><br>Try another league.</div>`;
-    return;
-  }
+
+  // Sort: live first, then scheduled, then final
+  const sorted = [...liveGames].sort((a,b) => {
+    const order = g => g.isLive ? 0 : g.isScheduled ? 1 : 2;
+    return order(a) - order(b);
+  });
+
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div class="section-label">${sport?.name} — Upcoming Fixtures</div>
-      <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">Auto-refreshes every 5 min</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+      <div class="section-label">${sport?.name}</div>
+      <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">🔄 Live · updates every 60s</div>
     </div>`;
-  liveGames.forEach(g => {
-    const gameId = g.idEvent;
-    const sel = selections[gameId];
-    const homeAbbr = getTeamAbbr(g.strHomeTeam);
-    const awayAbbr = getTeamAbbr(g.strAwayTeam);
-    const time = formatEventTime(g.dateEvent, g.strTime);
-    const hasScore = g.intHomeScore !== null && g.intHomeScore !== undefined && g.intHomeScore !== '';
-    const isLive = g.strStatus === 'Match Finished' ? false : hasScore;
+
+  sorted.forEach(g => {
+    const sel = selections[g.id];
+    const hasScore = g.homeScore !== null && g.homeScore !== undefined;
+
+    let statusBadge = '';
+    if (g.isLive) {
+      statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;color:#f55;font-size:10px;font-weight:700;letter-spacing:1px">
+        <span style="width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block"></span>LIVE · ${g.statusDetail}
+      </span>`;
+    } else if (g.isFinal) {
+      statusBadge = `<span style="font-size:10px;color:var(--muted)">FT · ${g.statusDetail}</span>`;
+    } else {
+      statusBadge = `<span style="font-size:10px;color:var(--accent2)">${g.timeDisplay}</span>`;
+    }
+
+    const seriesLine = g.series
+      ? `<div style="text-align:center;font-size:10px;color:var(--gold);padding:2px 12px 6px;font-weight:600">${g.seriesNote ? g.seriesNote + ' · ' : ''}${g.series}</div>`
+      : '';
+
     el.innerHTML += `
     <div class="game-card">
       <div class="game-header">
-        <span class="series-badge">
-          ${isLive ? '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block"></span>LIVE</span>' : sport?.name}
-        </span>
-        <span class="game-time">${time}</span>
+        <span class="series-badge">${sport?.name}</span>
+        ${statusBadge}
       </div>
+      ${seriesLine}
       <div class="game-body">
         <div class="team">
-          <div class="team-abbr">${awayAbbr}</div>
-          <div class="team-name">${g.strAwayTeam}</div>
+          ${g.awayLogo ? `<img src="${g.awayLogo}" style="width:32px;height:32px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'">` : ''}
+          <div class="team-abbr" style="font-size:20px">${g.awayAbbr}</div>
+          <div class="team-name">${g.awayTeam}</div>
+          ${g.awayRecord ? `<div style="font-size:9px;color:var(--muted)">${g.awayRecord}</div>` : ''}
         </div>
         <div class="vs-block">
           ${hasScore
-            ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900">${g.intAwayScore ?? 0} - ${g.intHomeScore ?? 0}</div>`
-            : `<div class="vs-text">vs</div>`}
+            ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;letter-spacing:2px">${g.awayScore}<span style="color:var(--muted);font-size:18px;margin:0 4px">-</span>${g.homeScore}</div>`
+            : `<div class="vs-text" style="font-size:12px">VS</div>`}
         </div>
         <div class="team">
-          <div class="team-abbr">${homeAbbr}</div>
-          <div class="team-name">${g.strHomeTeam}</div>
+          ${g.homeLogo ? `<img src="${g.homeLogo}" style="width:32px;height:32px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'">` : ''}
+          <div class="team-abbr" style="font-size:20px">${g.homeAbbr}</div>
+          <div class="team-name">${g.homeTeam}</div>
+          ${g.homeRecord ? `<div style="font-size:9px;color:var(--muted)">${g.homeRecord}</div>` : ''}
         </div>
       </div>
       <div class="prob-bar">
@@ -640,26 +531,26 @@ function renderSports() {
         <div class="prob-away" style="width:${g.homeProb}%"></div>
       </div>
       <div style="display:flex;justify-content:space-between;padding:0 12px 4px;font-size:10px;color:var(--muted)">
-        <span>${g.awayProb}% ${awayAbbr}</span>
+        <span>${g.awayProb}% ${g.awayAbbr}</span>
         ${g.isSoccer ? `<span>Draw ${g.drawProb}%</span>` : ''}
-        <span>${g.homeProb}% ${homeAbbr}</span>
+        <span>${g.homeProb}% ${g.homeAbbr}</span>
       </div>
       <div class="odds-row">
-        <div class="odd-btn ${sel?.type==='away'?'selected':''}" onclick="selectOdd('${gameId}','away','${g.strAwayTeam} Win','${g.awayOdds}')">
-          <div class="odd-label">${awayAbbr} Win</div>
+        <div class="odd-btn ${sel?.type==='away'?'selected':''}" onclick="selectOdd('${g.id}','away','${g.awayTeam} Win','${g.awayOdds}')">
+          <div class="odd-label">${g.awayAbbr} Win</div>
           <div class="odd-val">${g.awayOdds}</div>
-          <div class="odd-team" style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.strAwayTeam}</div>
+          <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.awayTeam}</div>
         </div>
         ${g.isSoccer ? `
-        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" onclick="selectOdd('${gameId}','draw','Draw','${g.drawOdds}')">
+        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" onclick="selectOdd('${g.id}','draw','${g.awayTeam} vs ${g.homeTeam} Draw','${g.drawOdds}')">
           <div class="odd-label">Draw</div>
           <div class="odd-val">${g.drawOdds}</div>
-          <div class="odd-team">X</div>
+          <div class="odd-team" style="font-size:9px">X</div>
         </div>` : ''}
-        <div class="odd-btn ${sel?.type==='home'?'selected':''}" onclick="selectOdd('${gameId}','home','${g.strHomeTeam} Win','${g.homeOdds}')">
-          <div class="odd-label">${homeAbbr} Win</div>
+        <div class="odd-btn ${sel?.type==='home'?'selected':''}" onclick="selectOdd('${g.id}','home','${g.homeTeam} Win','${g.homeOdds}')">
+          <div class="odd-label">${g.homeAbbr} Win</div>
           <div class="odd-val">${g.homeOdds}</div>
-          <div class="odd-team" style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.strHomeTeam}</div>
+          <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.homeTeam}</div>
         </div>
       </div>
     </div>`;
