@@ -1037,7 +1037,8 @@ function renderCrash() {
       </div>
     </div>`;
   renderCrashHist();
-  initCrashCanvas();
+  // Use rAF to ensure DOM is painted before reading dimensions
+  requestAnimationFrame(() => initCrashCanvas());
 }
 
 // Canvas animation state
@@ -1046,13 +1047,16 @@ let canvasPoints = [];
 let canvasAnimFrame = null;
 
 function initCrashCanvas() {
-  crashCanvas = document.getElementById('crash-canvas');
-  if (!crashCanvas) return;
-  crashCtx = crashCanvas.getContext('2d');
-  // Set actual pixel size
-  const rect = crashCanvas.parentElement.getBoundingClientRect();
-  crashCanvas.width = rect.width || 600;
-  crashCanvas.height = 180;
+  const canvas = document.getElementById('crash-canvas');
+  if (!canvas) return;
+  crashCanvas = canvas;
+  crashCtx = canvas.getContext('2d');
+  // Must use rAF or setTimeout to get real layout width
+  const wrap = canvas.parentElement;
+  const w = wrap ? wrap.offsetWidth : 600;
+  canvas.width = w > 0 ? w : 600;
+  canvas.height = 180;
+  canvasPoints = [];
   drawIdleCanvas();
 }
 
@@ -1135,13 +1139,15 @@ function drawCrashCanvas(crashed) {
     const lastPt = canvasPoints[canvasPoints.length - 1];
     const rx = toCanvasX(canvasPoints.length - 1);
     const ry = toCanvasY(lastPt.y);
-    const wrapRect = crashCanvas.parentElement.getBoundingClientRect();
-    const scaleX = wrapRect.width / w;
-    const scaleY = wrapRect.height / h;
-    const angle = crashed ? 135 : -45;
-    rocket.style.left = (rx * scaleX - 14) + 'px';
-    rocket.style.bottom = ((h - ry) * scaleY - 14) + 'px';
-    rocket.style.transform = `rotate(${angle}deg)`;
+    // Use canvas CSS width (offsetWidth) not getBoundingClientRect which can be 0
+    const wrap = crashCanvas.parentElement;
+    const displayW = wrap ? wrap.offsetWidth : w;
+    const displayH = wrap ? wrap.offsetHeight : h;
+    const scaleX = displayW / w;
+    const scaleY = displayH / h;
+    rocket.style.left = Math.max(0, rx * scaleX - 14) + 'px';
+    rocket.style.bottom = Math.max(0, (h - ry) * scaleY - 14) + 'px';
+    rocket.style.transform = crashed ? 'rotate(135deg)' : 'rotate(-45deg)';
     rocket.style.fontSize = crashed ? '20px' : '28px';
     rocket.textContent = crashed ? '💥' : '🚀';
   }
@@ -1196,8 +1202,9 @@ async function crashStart() {
   line.className = 'crash-line'; line.style.width = '0%';
   multEl.className = 'crash-mult';
 
+  // Re-init canvas fresh for this round
+  initCrashCanvas();
   canvasPoints = [{ y: 1 }];
-  if (crashCanvas) initCrashCanvas();
 
   if (crashInterval) clearInterval(crashInterval);
   crashInterval = setInterval(() => {
@@ -1232,12 +1239,25 @@ async function crashStart() {
 
       setTimeout(() => {
         crashState = 'idle';
-        const e2 = document.getElementById('cmult');
-        if (e2) { e2.textContent = '1.00x'; e2.style.color = '#00e5a0'; e2.style.textShadow = '0 0 30px rgba(0,229,160,0.5)'; }
         canvasPoints = [];
-        drawIdleCanvas();
+        // Re-init canvas cleanly
+        initCrashCanvas();
+        const e2 = document.getElementById('cmult');
+        if (e2) {
+          e2.textContent = '1.00x';
+          e2.style.color = '#00e5a0';
+          e2.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
+        }
         const rocket = document.getElementById('crash-rocket');
-        if (rocket) { rocket.textContent = '🚀'; rocket.style.left = '20px'; rocket.style.bottom = '20px'; rocket.style.transform = 'rotate(-45deg)'; }
+        if (rocket) {
+          rocket.textContent = '🚀';
+          rocket.style.left = '20px';
+          rocket.style.bottom = '20px';
+          rocket.style.transform = 'rotate(-45deg)';
+          rocket.style.fontSize = '28px';
+        }
+        const sb3 = document.getElementById('c-start');
+        if (sb3) { sb3.style.display = 'inline-block'; sb3.disabled = false; sb3.textContent = '🚀 Launch'; }
       }, 3000);
     }
   }, 80);
