@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OddsX — Live Betting</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onload="initSupabase()"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -284,18 +284,9 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 // CONFIG — replace with your actual values
 // ─────────────────────────────────────────
 const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_1gtS15T5Te2VL7UmuAI8Gg_UeX6XB_q';
-// Wait for Supabase CDN to be ready before initializing
-let sb;
-function initSupabase() {
-  if (typeof supabase === 'undefined' || !supabase.createClient) {
-    setTimeout(initSupabase, 50);
-    return;
-  }
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  init();
-}
-// initSupabase is triggered by the onload on the Supabase script tag above
+const SUPABASE_ANON_KEY ='sb_publishable_1gtS15T5Te2VL7UmuAI8Gg_UeX6XB_q';
+// Initialize Supabase immediately — CDN script is loaded synchronously above
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ─── STATE ───
 let currentUser = null;
@@ -988,7 +979,7 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-// init() is called by initSupabase() above
+init();
 </script>
 </body>
 </html>
