@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   if (formattedPhone.startsWith('+')) formattedPhone = formattedPhone.slice(1);
 
   try {
-    const response = await fetch('https://sandbox.intasend.com/api/v1/payment/mpesa-stk-push/', {
+    const response = await fetch('https://payment.intasend.com/api/v1/payment/mpesa-stk-push/', {
       // For production use: 'https://payment.intasend.com/api/v1/payment/mpesa-stk-push/'
       method: 'POST',
       headers: {
