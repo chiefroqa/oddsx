@@ -466,23 +466,45 @@ function showToast(msg) {
 
 
 // ─── SPORTS CONFIG ───
-// Each sport fetches ALL games across ALL competitions from ESPN's free API.
-// Soccer shows EPL, La Liga, UCL, FA Cup, Serie A, Bundesliga, friendlies — everything.
-// No league filtering — if ESPN has it, it shows up.
+// ESPN API requires sport/league slug — no generic "soccer" endpoint exists.
+// For Football we fetch multiple leagues and merge them so FA Cup, UCL etc. all show.
 const SPORTS = [
-  { id:'soccer',     label:'⚽ Football',   name:'Football',    espn:'soccer',      isSoccer:true  },
-  { id:'nba',        label:'🏀 Basketball', name:'Basketball',  espn:'basketball',  isSoccer:false },
-  { id:'nfl',        label:'🏈 NFL',        name:'NFL',         espn:'football/nfl',isSoccer:false },
-  { id:'baseball',   label:'⚾ Baseball',   name:'Baseball',    espn:'baseball',    isSoccer:false },
-  { id:'hockey',     label:'🏒 Hockey',     name:'Hockey',      espn:'hockey',      isSoccer:false },
-  { id:'rugby',      label:'🏉 Rugby',      name:'Rugby',       espn:'rugby',       isSoccer:false },
-  { id:'cricket',    label:'🏏 Cricket',    name:'Cricket',     espn:'cricket',     isSoccer:false },
+  { id:'soccer', label:'⚽ Football', name:'Football', isSoccer:true, leagues:[
+    'soccer/eng.1',        // Premier League
+    'soccer/eng.fa',       // FA Cup
+    'soccer/eng.league_cup', // Carabao Cup
+    'soccer/esp.1',        // La Liga
+    'soccer/esp.copa_del_rey', // Copa del Rey
+    'soccer/ita.1',        // Serie A
+    'soccer/ger.1',        // Bundesliga
+    'soccer/fra.1',        // Ligue 1
+    'soccer/uefa.champions', // Champions League
+    'soccer/uefa.europa',  // Europa League
+    'soccer/uefa.europaconf', // Conference League
+    'soccer/fifa.worldq.uefa', // World Cup qualifiers
+  ]},
+  { id:'nba', label:'🏀 NBA', name:'NBA', isSoccer:false, leagues:[
+    'basketball/nba',
+  ]},
+  { id:'mlb', label:'⚾ MLB', name:'MLB', isSoccer:false, leagues:[
+    'baseball/mlb',
+  ]},
+  { id:'nhl', label:'🏒 NHL', name:'NHL', isSoccer:false, leagues:[
+    'hockey/nhl',
+  ]},
+  { id:'nfl', label:'🏈 NFL', name:'NFL', isSoccer:false, leagues:[
+    'football/nfl',
+  ]},
+  { id:'tennis', label:'🎾 Tennis', name:'Tennis', isSoccer:false, leagues:[
+    'tennis/atp',
+    'tennis/wta',
+  ]},
 ];
 
 // ─── ESPN API FETCH ───
-// Fetches ALL games across ALL competitions for a sport.
-// Hits today + next 6 days in parallel so upcoming games always show.
-async function fetchESPN(sportPath) {
+// Fetches today + next 6 days across all league slugs for the sport in parallel.
+// Soccer fetches EPL, FA Cup, UCL, La Liga, Serie A etc all at once and merges.
+async function fetchESPN(leagues) {
   const dates = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date();
@@ -490,18 +512,21 @@ async function fetchESPN(sportPath) {
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
 
-  const fetches = dates.map(dateStr => {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${dateStr}`;
-    return fetch(url).then(r => r.json()).catch(() => ({}));
-  });
+  // league x date — all in parallel
+  const fetches = [];
+  for (const league of leagues) {
+    for (const dateStr of dates) {
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${league}/scoreboard?dates=${dateStr}&limit=100`;
+      fetches.push(fetch(url).then(r => r.json()).catch(() => ({})));
+    }
+  }
 
   const responses = await Promise.all(fetches);
   const allEvents = [];
   const seen = new Set();
 
   for (const data of responses) {
-    const events = data.events || [];
-    for (const ev of events) {
+    for (const ev of (data.events || [])) {
       if (!seen.has(ev.id)) {
         seen.add(ev.id);
         allEvents.push(ev);
@@ -509,8 +534,11 @@ async function fetchESPN(sportPath) {
     }
   }
 
+  // Sort by date ascending so live games first, then upcoming
+  allEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
   return allEvents;
 }
+
 
 function parseESPNEvent(ev, sport) {
   const comp = ev.competitions?.[0];
@@ -641,7 +669,7 @@ async function loadSport(id) {
     <div style="font-size:12px;color:var(--muted)">Fetching live & upcoming games from ESPN...</div>
   </div>`;
 
-  const rawEvents = await fetchESPN(sport.espn);
+  const rawEvents = await fetchESPN(sport.leagues);
   liveGames = rawEvents.map(ev => parseESPNEvent(ev, sport)).filter(Boolean);
 
   if (!liveGames.length) {
