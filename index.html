@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OddsX — Live Betting</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onload="initSupabase()"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -285,8 +285,17 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 // ─────────────────────────────────────────
 const SUPABASE_URL = 'YOUR_SUPABASE_URL';
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Wait for Supabase CDN to be ready before initializing
+let sb;
+function initSupabase() {
+  if (typeof supabase === 'undefined' || !supabase.createClient) {
+    setTimeout(initSupabase, 50);
+    return;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  init();
+}
+// initSupabase is triggered by the onload on the Supabase script tag above
 
 // ─── STATE ───
 let currentUser = null;
@@ -476,7 +485,7 @@ async function signUp() {
 }
 
 async function signInGoogle() {
-  await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+  await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
 }
 
 async function signOut() {
@@ -979,7 +988,7 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-init();
+// init() is called by initSupabase() above
 </script>
 </body>
 </html>
