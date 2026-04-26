@@ -326,6 +326,7 @@ let mineGrid = [], mineRevealed = 0, mineStake = 0, mineMult = 1, mineActive = f
 let crashHistory = [];
 let liveGames = [];
 let currentSport = 'soccer';
+let placedGameIds = new Set(); // games user has already bet on
 let refreshTimer = null;
 
 // ─── AUTH & CORE ───
@@ -366,6 +367,7 @@ async function loadUser(user) {
   initSports();
   renderCrash();
   renderMines();
+  resumePendingBets();
 }
 
 function showAuthScreen() {
@@ -604,7 +606,14 @@ function parseESPNEvent(ev, sport) {
     } catch(e) {}
   }
 
-  const odds = generateOdds(home.team?.displayName, away.team?.displayName);
+  const homeScoreVal = home.score ?? null;
+  const awayScoreVal = away.score ?? null;
+  const odds = generateOdds(
+    home.team?.displayName, away.team?.displayName,
+    homeScoreVal, awayScoreVal,
+    status?.state === 'in',
+    status?.shortDetail || ''
+  );
 
   return {
     id: ev.id,
@@ -646,18 +655,48 @@ function seededRand(str, offset = 0) {
   return ((h >>> 0) % 1000) / 1000;
 }
 
-function generateOdds(homeTeam = '', awayTeam = '') {
+function generateOdds(homeTeam = '', awayTeam = '', homeScore = null, awayScore = null, isLive = false, statusDetail = '') {
   const seed = homeTeam + awayTeam;
-  // Home advantage baseline: 52-58% win probability for home team
-  const homeProb = 46 + Math.round(seededRand(seed, 1) * 18);
-  const drawProb = 18 + Math.round(seededRand(seed, 2) * 14); // 18-32%
-  const awayProb = 100 - homeProb;
+
+  // Base pre-match probabilities (seeded so consistent per matchup)
+  let homeProb = 46 + Math.round(seededRand(seed, 1) * 18); // 46-64%
+  let drawProb = 18 + Math.round(seededRand(seed, 2) * 14); // 18-32%
+  let awayProb = 100 - homeProb;
+
+  // ── IN-PLAY ODDS: shift based on current score and time ──
+  if (isLive && homeScore !== null && awayScore !== null) {
+    const hS = parseInt(homeScore) || 0;
+    const aS = parseInt(awayScore) || 0;
+    const diff = hS - aS;
+
+    // Extract minutes played from statusDetail e.g. "45'" or "67:23"
+    let minutesPlayed = 50; // default mid-game
+    const minMatch = statusDetail.match(/(\d+)[':\s]/);
+    if (minMatch) minutesPlayed = parseInt(minMatch[1]);
+    const timeWeight = Math.min(minutesPlayed / 90, 1); // 0 to 1
+
+    // As score diverges and time passes, leading team becomes heavy favourite
+    const scoreShift = diff * 15 * timeWeight; // each goal shifts by up to 15%
+    homeProb = Math.max(5, Math.min(90, homeProb + scoreShift));
+    awayProb = Math.max(5, Math.min(90, awayProb - scoreShift));
+
+    // Draw probability collapses as time runs out with a score difference
+    if (Math.abs(diff) > 0) {
+      drawProb = Math.max(3, drawProb * (1 - timeWeight * 0.8));
+    }
+    // Normalize
+    const total = homeProb + awayProb + drawProb;
+    homeProb = Math.round(homeProb / total * 100);
+    awayProb = Math.round(awayProb / total * 100);
+    drawProb = 100 - homeProb - awayProb;
+  }
+
   const adjHome = homeProb - drawProb * 0.4;
   const adjAway = awayProb - drawProb * 0.6;
   return {
     homeProb: Math.round(adjHome),
     awayProb: Math.round(adjAway),
-    drawProb,
+    drawProb: Math.max(0, drawProb),
     homeOdds: probToAmericanOdds(adjHome),
     awayOdds: probToAmericanOdds(adjAway),
     drawOdds: probToAmericanOdds(drawProb),
@@ -735,13 +774,15 @@ function renderSports() {
   sorted.forEach(g => {
     const sel = selections[g.id];
     const hasScore = g.homeScore !== null && g.homeScore !== undefined;
+    const locked = g.isFinal; // no betting on finished games
+    const isLiveGame = g.isLive;
 
     let statusBadge = '';
-    if (g.isLive) {
+    if (isLiveGame) {
       statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;color:#f55;font-size:10px;font-weight:700;letter-spacing:1px">
         <span style="width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block"></span>LIVE · ${g.statusDetail}
       </span>`;
-    } else if (g.isFinal) {
+    } else if (locked) {
       statusBadge = `<span style="font-size:10px;color:var(--muted)">FT · ${g.statusDetail}</span>`;
     } else {
       statusBadge = `<span style="font-size:10px;color:var(--accent2)">${g.timeDisplay}</span>`;
@@ -751,8 +792,35 @@ function renderSports() {
       ? `<div style="text-align:center;font-size:10px;color:var(--gold);padding:2px 12px 6px;font-weight:600">${g.seriesNote ? g.seriesNote + ' · ' : ''}${g.series}</div>`
       : '';
 
+    // Live badge warning — odds are shifting
+    const liveOddsNote = isLiveGame
+      ? `<div style="background:rgba(255,107,53,0.1);border-top:1px solid rgba(255,107,53,0.2);padding:5px 12px;font-size:10px;color:var(--accent2);text-align:center">
+          ⚡ In-play odds — updating based on score & time
+        </div>`
+      : '';
+
+    // Locked overlay for finished games
+    const lockedNote = locked
+      ? `<div style="background:rgba(0,0,0,0.4);border-top:1px solid rgba(255,255,255,0.06);padding:8px 12px;font-size:11px;color:var(--muted);text-align:center">
+          🔒 Betting closed — match finished
+        </div>`
+      : '';
+
+    // One bet per game — check if this game already has a placed bet
+    const alreadyBet = placedGameIds.has(g.id);
+    const alreadyBetNote = alreadyBet
+      ? `<div style="background:rgba(0,229,160,0.06);border-top:1px solid var(--border);padding:6px 12px;font-size:10px;color:var(--accent);text-align:center">
+          ✓ You have an active bet on this game
+        </div>`
+      : '';
+
+    const canBet = !locked && !alreadyBet;
+
+    const oddsClick = (type, team, odds) =>
+      canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}')"` : '';
+
     el.innerHTML += `
-    <div class="game-card">
+    <div class="game-card" style="${locked?'opacity:0.7':''}">
       <div class="game-header">
         <span class="series-badge">${g.competitionName || sport?.name}</span>
         ${statusBadge}
@@ -786,24 +854,27 @@ function renderSports() {
         ${g.isSoccer ? `<span>Draw ${g.drawProb}%</span>` : ''}
         <span>${g.homeProb}% ${g.homeAbbr}</span>
       </div>
-      <div class="odds-row">
-        <div class="odd-btn ${sel?.type==='away'?'selected':''}" onclick="selectOdd('${g.id}','away','${g.awayTeam} Win','${g.awayOdds}')">
+      ${liveOddsNote}
+      <div class="odds-row" style="${!canBet?'pointer-events:none;opacity:0.5':''}">
+        <div class="odd-btn ${sel?.type==='away'?'selected':''}" ${oddsClick('away', g.awayTeam+' Win', g.awayOdds)}>
           <div class="odd-label">${g.awayAbbr} Win</div>
           <div class="odd-val">${g.awayOdds}</div>
           <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.awayTeam}</div>
         </div>
         ${g.isSoccer ? `
-        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" onclick="selectOdd('${g.id}','draw','${g.awayTeam} vs ${g.homeTeam} Draw','${g.drawOdds}')">
+        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" ${oddsClick('draw', g.awayTeam+' vs '+g.homeTeam+' Draw', g.drawOdds)}>
           <div class="odd-label">Draw</div>
           <div class="odd-val">${g.drawOdds}</div>
           <div class="odd-team" style="font-size:9px">X</div>
         </div>` : ''}
-        <div class="odd-btn ${sel?.type==='home'?'selected':''}" onclick="selectOdd('${g.id}','home','${g.homeTeam} Win','${g.homeOdds}')">
+        <div class="odd-btn ${sel?.type==='home'?'selected':''}" ${oddsClick('home', g.homeTeam+' Win', g.homeOdds)}>
           <div class="odd-label">${g.homeAbbr} Win</div>
           <div class="odd-val">${g.homeOdds}</div>
           <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.homeTeam}</div>
         </div>
       </div>
+      ${lockedNote}
+      ${alreadyBetNote}
     </div>`;
   });
 }
@@ -853,37 +924,233 @@ async function placeBet() {
     status: 'pending',
     payout: 0,
   });
-  // Deduct stake immediately, payout credited by admin on settlement
+  // Deduct stake immediately, payout credited automatically on settlement
   await updateBalance(userBalance - stake, 'bet_loss', stake, `${bets.length}-leg accumulator (pending)`);
+  // Lock each game from further betting
+  bets.forEach(b => placedGameIds.add(b.gameId));
   selections = {};
   document.getElementById('betslip').style.display = 'none';
   document.getElementById('slip-cnt').textContent = '0';
   btn.disabled = false; btn.textContent = 'Place Bet';
   renderSports();
   showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
+  // Start watching for result
+  bets.forEach(b => watchForResult(b.gameId, b.type));
 }
 
 // ─── CRASH ───
+// ─── AUTO BET SETTLEMENT ───
+// Polls every 60s — when a game finishes, determines winner from ESPN
+// score and auto-credits payout. No admin needed.
+async function watchForResult(gameId, bet) {
+  const poll = setInterval(async () => {
+    const game = liveGames.find(g => g.id === gameId);
+    if (!game) return;
+    if (game.isFinal) {
+      clearInterval(poll);
+      await settleBetFromResult(bet, game);
+    }
+  }, 60000);
+}
+
+async function settleBetFromResult(bet, game) {
+  const homeScore = parseInt(game.homeScore) || 0;
+  const awayScore = parseInt(game.awayScore) || 0;
+
+  let result = 'draw';
+  if (homeScore > awayScore) result = 'home';
+  else if (awayScore > homeScore) result = 'away';
+
+  // For accumulator — check ALL selections
+  // Any selection referencing this game gets evaluated; others pass by default
+  const allCorrect = bet.selections.every(sel => {
+    if (sel.gameId !== game.id) return true; // leg for a different game
+    return sel.type === result;
+  });
+
+  const won = allCorrect;
+  const payout = won ? bet.potential_payout : 0;
+
+  await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', bet.id);
+
+  if (won) {
+    const newBal = userBalance + payout;
+    await updateBalance(newBal, 'bet_win', payout,
+      `Bet won — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
+    showToast(`🎉 Bet WON! +KSH ${(payout - bet.stake).toLocaleString()} credited!`);
+  } else {
+    showToast(`😔 Bet settled — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
+  }
+
+  placedGameIds.delete(game.id);
+  renderSports();
+}
+
+// Load user's pending bets on login and start watching for results
+async function resumePendingBets() {
+  const { data: bets } = await sb.from('bets')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .eq('status', 'pending');
+  if (!bets?.length) return;
+  // Restore placedGameIds so user can't double-bet
+  bets.forEach(bet => {
+    bet.selections?.forEach(sel => {
+      if (sel.gameId) {
+        placedGameIds.add(sel.gameId);
+        watchForResult(sel.gameId, bet);
+      }
+    });
+  });
+}
+
 function renderCrash() {
   const el = document.getElementById('tab-crash');
   el.innerHTML = `
-    <div class="mini-game">
-      <div class="mini-title">📈 Crash</div>
-      <div class="mini-desc">Cash out before the multiplier crashes! The longer you wait, the bigger the payout.</div>
-      <div class="crash-area">
-        <div class="crash-mult" id="cmult">1.00x</div>
-        <div class="crash-line" id="cline"></div>
+    <div class="mini-game" style="padding:0;overflow:hidden;border-radius:10px">
+      <div style="padding:14px 14px 0">
+        <div class="mini-title">📈 Crash</div>
+        <div class="mini-desc">Cash out before the rocket crashes! The longer you wait, the bigger the multiplier.</div>
       </div>
-      <div class="action-row">
-        <span style="font-size:11px;color:var(--muted)">KSH</span>
-        <input class="crash-input" type="number" id="c-stake" value="200" min="50">
-        <button class="green-btn" id="c-start" onclick="crashStart()">Bet & Launch</button>
-        <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">Cash Out</button>
-        <span id="c-msg"></span>
+
+      <!-- CANVAS ANIMATION AREA -->
+      <div style="position:relative;background:#0d1420;margin:0 0 0 0;overflow:hidden" id="crash-canvas-wrap">
+        <canvas id="crash-canvas" width="600" height="180" style="width:100%;display:block"></canvas>
+        <!-- Multiplier overlay -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <div id="cmult" style="font-family:'Barlow Condensed',sans-serif;font-size:56px;font-weight:900;color:#00e5a0;text-shadow:0 0 30px rgba(0,229,160,0.5);transition:color 0.3s">1.00x</div>
+        </div>
+        <!-- Rocket -->
+        <div id="crash-rocket" style="position:absolute;font-size:28px;transition:none;bottom:20px;left:20px">🚀</div>
       </div>
-      <div style="margin-top:12px"><div class="section-label">Recent rounds</div><div class="hist-row" id="c-hist"></div></div>
+
+      <div style="padding:12px 14px">
+        <div class="action-row" style="margin-bottom:10px">
+          <span style="font-size:11px;color:var(--muted)">KSH</span>
+          <input class="crash-input" type="number" id="c-stake" value="200" min="50">
+          <button class="green-btn" id="c-start" onclick="crashStart()">🚀 Launch</button>
+          <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">💰 Cash Out</button>
+          <span id="c-msg"></span>
+        </div>
+        <div class="section-label" style="margin-bottom:6px">Recent rounds</div>
+        <div class="hist-row" id="c-hist"></div>
+      </div>
     </div>`;
   renderCrashHist();
+  initCrashCanvas();
+}
+
+// Canvas animation state
+let crashCanvas = null, crashCtx = null;
+let canvasPoints = [];
+let canvasAnimFrame = null;
+
+function initCrashCanvas() {
+  crashCanvas = document.getElementById('crash-canvas');
+  if (!crashCanvas) return;
+  crashCtx = crashCanvas.getContext('2d');
+  // Set actual pixel size
+  const rect = crashCanvas.parentElement.getBoundingClientRect();
+  crashCanvas.width = rect.width || 600;
+  crashCanvas.height = 180;
+  drawIdleCanvas();
+}
+
+function drawIdleCanvas() {
+  if (!crashCtx) return;
+  const w = crashCanvas.width, h = crashCanvas.height;
+  crashCtx.clearRect(0, 0, w, h);
+  // Grid lines
+  crashCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+  crashCtx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    crashCtx.beginPath();
+    crashCtx.moveTo(0, h * i / 4);
+    crashCtx.lineTo(w, h * i / 4);
+    crashCtx.stroke();
+  }
+  for (let i = 1; i < 6; i++) {
+    crashCtx.beginPath();
+    crashCtx.moveTo(w * i / 6, 0);
+    crashCtx.lineTo(w * i / 6, h);
+    crashCtx.stroke();
+  }
+}
+
+function drawCrashCanvas(crashed) {
+  if (!crashCtx || !canvasPoints.length) return;
+  const w = crashCanvas.width, h = crashCanvas.height;
+  crashCtx.clearRect(0, 0, w, h);
+
+  // Background grid
+  drawIdleCanvas();
+
+  const pad = { left: 30, bottom: 20, right: 20, top: 20 };
+  const drawW = w - pad.left - pad.right;
+  const drawH = h - pad.top - pad.bottom;
+
+  const maxX = Math.max(canvasPoints.length, 10);
+  const maxY = Math.max(...canvasPoints.map(p => p.y), 2);
+
+  const toCanvasX = x => pad.left + (x / maxX) * drawW;
+  const toCanvasY = y => h - pad.bottom - ((y - 1) / (maxY - 1)) * drawH;
+
+  // Gradient fill under curve
+  const grad = crashCtx.createLinearGradient(0, 0, 0, h);
+  if (crashed) {
+    grad.addColorStop(0, 'rgba(255,107,53,0.3)');
+    grad.addColorStop(1, 'rgba(255,107,53,0.02)');
+  } else {
+    grad.addColorStop(0, 'rgba(0,229,160,0.25)');
+    grad.addColorStop(1, 'rgba(0,229,160,0.02)');
+  }
+
+  crashCtx.beginPath();
+  crashCtx.moveTo(toCanvasX(0), h - pad.bottom);
+  canvasPoints.forEach((p, i) => {
+    crashCtx.lineTo(toCanvasX(i), toCanvasY(p.y));
+  });
+  const lastX = toCanvasX(canvasPoints.length - 1);
+  crashCtx.lineTo(lastX, h - pad.bottom);
+  crashCtx.closePath();
+  crashCtx.fillStyle = grad;
+  crashCtx.fill();
+
+  // Curve line
+  crashCtx.beginPath();
+  crashCtx.moveTo(toCanvasX(0), h - pad.bottom);
+  canvasPoints.forEach((p, i) => {
+    crashCtx.lineTo(toCanvasX(i), toCanvasY(p.y));
+  });
+  crashCtx.strokeStyle = crashed ? '#ff6b35' : '#00e5a0';
+  crashCtx.lineWidth = 2.5;
+  crashCtx.shadowColor = crashed ? '#ff6b35' : '#00e5a0';
+  crashCtx.shadowBlur = 8;
+  crashCtx.stroke();
+  crashCtx.shadowBlur = 0;
+
+  // Move rocket to tip of curve
+  const rocket = document.getElementById('crash-rocket');
+  if (rocket && canvasPoints.length > 0) {
+    const lastPt = canvasPoints[canvasPoints.length - 1];
+    const rx = toCanvasX(canvasPoints.length - 1);
+    const ry = toCanvasY(lastPt.y);
+    const wrapRect = crashCanvas.parentElement.getBoundingClientRect();
+    const scaleX = wrapRect.width / w;
+    const scaleY = wrapRect.height / h;
+    const angle = crashed ? 135 : -45;
+    rocket.style.left = (rx * scaleX - 14) + 'px';
+    rocket.style.bottom = ((h - ry) * scaleY - 14) + 'px';
+    rocket.style.transform = `rotate(${angle}deg)`;
+    rocket.style.fontSize = crashed ? '20px' : '28px';
+    rocket.textContent = crashed ? '💥' : '🚀';
+  }
+
+  // Y-axis labels
+  crashCtx.fillStyle = 'rgba(255,255,255,0.3)';
+  crashCtx.font = '10px Barlow';
+  crashCtx.fillText('1x', 4, h - pad.bottom - 2);
+  if (maxY > 2) crashCtx.fillText(maxY.toFixed(1) + 'x', 4, pad.top + 8);
 }
 
 function renderCrashHist() {
@@ -929,36 +1196,49 @@ async function crashStart() {
   line.className = 'crash-line'; line.style.width = '0%';
   multEl.className = 'crash-mult';
 
+  canvasPoints = [{ y: 1 }];
+  if (crashCanvas) initCrashCanvas();
+
   if (crashInterval) clearInterval(crashInterval);
   crashInterval = setInterval(() => {
     const el = document.getElementById('cmult');
-    const ln = document.getElementById('cline');
-    if (!el || !ln) { clearInterval(crashInterval); crashState = 'idle'; return; }
+    if (!el) { clearInterval(crashInterval); crashState = 'idle'; return; }
 
     crashMult = +(crashMult * 1.018).toFixed(2);
     el.textContent = crashMult.toFixed(2) + 'x';
-    ln.style.width = Math.min(95, 10 + crashMult * 8) + '%';
+    el.style.color = '#00e5a0';
+    el.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
+
+    // Feed canvas
+    canvasPoints.push({ y: crashMult });
+    drawCrashCanvas(false);
 
     if (crashMult >= crashTarget) {
       clearInterval(crashInterval);
       crashState = 'crashed';
-      el.className = 'crash-mult crashed';
+      // Crash visual
       el.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
-      ln.className = 'crash-line crashed';
+      el.style.color = '#ff6b35';
+      el.style.textShadow = '0 0 30px rgba(255,107,53,0.6)';
+      drawCrashCanvas(true);
+
       const cb = document.getElementById('c-cash');
       const sb2 = document.getElementById('c-start');
       const mg = document.getElementById('c-msg');
       if (cb) cb.style.display = 'none';
-      if (sb2) { sb2.style.display = 'inline-block'; sb2.textContent = 'Try Again'; }
+      if (sb2) { sb2.style.display = 'inline-block'; sb2.textContent = '🚀 Try Again'; }
       if (mg) mg.innerHTML = `<span class="msg lose">-KSH ${stake.toLocaleString()}</span>`;
       crashHistory.push(crashMult); renderCrashHist();
+
       setTimeout(() => {
         crashState = 'idle';
         const e2 = document.getElementById('cmult');
-        const l2 = document.getElementById('cline');
-        if (e2) { e2.className = 'crash-mult'; e2.textContent = '1.00x'; }
-        if (l2) { l2.className = 'crash-line'; l2.style.width = '0%'; }
-      }, 2000);
+        if (e2) { e2.textContent = '1.00x'; e2.style.color = '#00e5a0'; e2.style.textShadow = '0 0 30px rgba(0,229,160,0.5)'; }
+        canvasPoints = [];
+        drawIdleCanvas();
+        const rocket = document.getElementById('crash-rocket');
+        if (rocket) { rocket.textContent = '🚀'; rocket.style.left = '20px'; rocket.style.bottom = '20px'; rocket.style.transform = 'rotate(-45deg)'; }
+      }, 3000);
     }
   }, 80);
 }
@@ -974,8 +1254,11 @@ async function crashCash() {
   const startBtn = document.getElementById('c-start');
   const msgEl = document.getElementById('c-msg');
   if (cashBtn) cashBtn.style.display = 'none';
-  if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.textContent = 'Bet & Launch'; }
+  if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.textContent = '🚀 Launch'; }
   if (msgEl) msgEl.innerHTML = `<span class="msg win">+KSH ${winAmount.toLocaleString()}</span>`;
+  // Show cashout point on canvas as a dot
+  const el2 = document.getElementById('cmult');
+  if (el2) { el2.style.color = '#ffc947'; el2.style.textShadow = '0 0 30px rgba(255,201,71,0.5)'; }
   crashHistory.push(crashMult); renderCrashHist();
 }
 
