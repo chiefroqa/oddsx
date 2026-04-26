@@ -480,18 +480,41 @@ async function loadBets() {
   const el = document.getElementById('bets-table');
   if (!data?.length) { el.innerHTML = '<div class="loading-row">No bets yet</div>'; return; }
   el.innerHTML = `<table>
-    <tr><th>Date</th><th>User</th><th>Selections</th><th>Stake</th><th>Odds</th><th>Potential</th><th>Status</th><th>Payout</th></tr>
+    <tr><th>Date</th><th>User</th><th>Selections</th><th>Stake</th><th>Odds</th><th>Potential</th><th>Status</th><th>Settle</th></tr>
     ${data.map(b => `<tr>
       <td style="font-size:11px;color:var(--muted)">${fmtDate(b.created_at)}</td>
       <td style="font-size:12px">${b.profiles?.email || b.user_id?.slice(0,8)}</td>
-      <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${b.selections?.map(s=>s.label).join(' + ')}</td>
+      <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">${b.selections?.map(s=>s.label).join(' + ')}</td>
       <td style="font-weight:600">${fmt(b.stake)}</td>
       <td style="color:var(--gold)">${b.odds_total}x</td>
       <td>${fmt(b.potential_payout)}</td>
       <td><span class="badge ${b.status}">${b.status}</span></td>
-      <td style="color:var(--accent)">${b.payout > 0 ? fmt(b.payout) : '—'}</td>
+      <td style="display:flex;gap:4px">
+        ${b.status === 'pending' ? `
+          <button class="action-btn approve" onclick="settleBet('${b.id}','${b.user_id}',${b.potential_payout},'won')">✓ Won</button>
+          <button class="action-btn reject" onclick="settleBet('${b.id}','${b.user_id}',0,'lost')">✗ Lost</button>
+        ` : b.payout > 0 ? fmt(b.payout) : '—'}
+      </td>
     </tr>`).join('')}
   </table>`;
+}
+
+async function settleBet(betId, userId, payout, result) {
+  const label = result === 'won' ? `Won — payout ${fmt(payout)}` : 'Lost';
+  if (!confirm(`Mark bet as ${result.toUpperCase()}?${result==='won'?' This will credit '+fmt(payout)+' to user.':''}`)) return;
+  // Update bet status
+  await sb.from('bets').update({ status: result, payout: result==='won'?payout:0 }).eq('id', betId);
+  if (result === 'won') {
+    // Credit winnings to user
+    const { data: profile } = await sb.from('profiles').select('balance').eq('id', userId).single();
+    const newBal = (profile?.balance || 0) + payout;
+    await sb.from('profiles').update({ balance: newBal }).eq('id', userId);
+    await sb.from('transactions').insert({ user_id: userId, type:'bet_win', amount: payout, label, balance_after: newBal });
+    toast(`✅ Bet settled as WON — ${fmt(payout)} credited`);
+  } else {
+    toast('Bet settled as LOST');
+  }
+  loadBets();
 }
 
 // ── TRANSACTIONS ──

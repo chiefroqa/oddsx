@@ -842,21 +842,25 @@ async function placeBet() {
   const btn = document.getElementById('place-btn');
   btn.disabled = true; btn.textContent = 'Placing...';
   const mult = bets.reduce((a, b) => a * oddsToDecimal(b.odds), 1);
-  const win = Math.random() > 0.55;
-  const newBal = win ? Math.round(userBalance - stake + stake * mult) : userBalance - stake;
-  const payout = win ? Math.round(stake * mult) : 0;
+  const potentialPayout = Math.round(stake * mult);
+  // Save bet as PENDING — admin settles it after games finish
   await sb.from('bets').insert({
-    user_id: currentUser.id, selections: bets, stake, odds_total: parseFloat(mult.toFixed(2)),
-    potential_payout: Math.round(stake * mult), status: win ? 'won' : 'lost', payout,
+    user_id: currentUser.id,
+    selections: bets,
+    stake,
+    odds_total: parseFloat(mult.toFixed(2)),
+    potential_payout: potentialPayout,
+    status: 'pending',
+    payout: 0,
   });
-  await updateBalance(newBal, win ? 'bet_win' : 'bet_loss', stake, `${bets.length}-leg accumulator`);
+  // Deduct stake immediately, payout credited by admin on settlement
+  await updateBalance(userBalance - stake, 'bet_loss', stake, `${bets.length}-leg accumulator (pending)`);
   selections = {};
   document.getElementById('betslip').style.display = 'none';
   document.getElementById('slip-cnt').textContent = '0';
   btn.disabled = false; btn.textContent = 'Place Bet';
   renderSports();
-  if (win) showToast(`🎉 BET WON! +KSH ${(payout - stake).toLocaleString()}`);
-  else showToast(`😔 Bet lost. -KSH ${stake.toLocaleString()}`);
+  showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
 }
 
 // ─── CRASH ───
@@ -892,48 +896,86 @@ function renderCrashHist() {
 
 async function crashStart() {
   if (crashState !== 'idle') return;
-  const stake = parseFloat(document.getElementById('c-stake').value) || 0;
+  const stakeInput = document.getElementById('c-stake');
+  const stake = parseFloat(stakeInput?.value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
+
+  // Disable button immediately to prevent double-click
+  const startBtn = document.getElementById('c-start');
+  const cashBtn = document.getElementById('c-cash');
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting...'; }
+
   await updateBalance(userBalance - stake, 'bet_loss', stake, 'Crash game');
-  crashState = 'running'; crashMult = 1.0;
-  crashTarget = 1.1 + Math.random() * 7 * (Math.random() < 0.2 ? 0.3 : 1);
-  document.getElementById('c-start').style.display = 'none';
-  document.getElementById('c-cash').style.display = 'inline-block';
-  document.getElementById('c-msg').innerHTML = '';
-  const line = document.getElementById('cline');
+
+  // Get fresh DOM refs after balance update
   const multEl = document.getElementById('cmult');
+  const line = document.getElementById('cline');
+  const msgEl = document.getElementById('c-msg');
+
+  if (!multEl || !line) {
+    // Tab was switched during await — abort
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Bet & Launch'; }
+    return;
+  }
+
+  crashState = 'running';
+  crashMult = 1.0;
+  crashTarget = 1.1 + Math.random() * 7 * (Math.random() < 0.2 ? 0.3 : 1);
+
+  if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
+  if (cashBtn) cashBtn.style.display = 'inline-block';
+  if (msgEl) msgEl.innerHTML = '';
   line.className = 'crash-line'; line.style.width = '0%';
   multEl.className = 'crash-mult';
+
+  if (crashInterval) clearInterval(crashInterval);
   crashInterval = setInterval(() => {
+    const el = document.getElementById('cmult');
+    const ln = document.getElementById('cline');
+    if (!el || !ln) { clearInterval(crashInterval); crashState = 'idle'; return; }
+
     crashMult = +(crashMult * 1.018).toFixed(2);
-    multEl.textContent = crashMult.toFixed(2) + 'x';
-    line.style.width = Math.min(95, 10 + crashMult * 8) + '%';
+    el.textContent = crashMult.toFixed(2) + 'x';
+    ln.style.width = Math.min(95, 10 + crashMult * 8) + '%';
+
     if (crashMult >= crashTarget) {
-      clearInterval(crashInterval); crashState = 'crashed';
-      multEl.className = 'crash-mult crashed';
-      multEl.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
-      line.className = 'crash-line crashed';
-      document.getElementById('c-cash').style.display = 'none';
-      document.getElementById('c-start').style.display = 'inline-block';
-      document.getElementById('c-start').textContent = 'Try Again';
-      document.getElementById('c-msg').innerHTML = `<span class="msg lose">-KSH ${stake}</span>`;
+      clearInterval(crashInterval);
+      crashState = 'crashed';
+      el.className = 'crash-mult crashed';
+      el.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
+      ln.className = 'crash-line crashed';
+      const cb = document.getElementById('c-cash');
+      const sb2 = document.getElementById('c-start');
+      const mg = document.getElementById('c-msg');
+      if (cb) cb.style.display = 'none';
+      if (sb2) { sb2.style.display = 'inline-block'; sb2.textContent = 'Try Again'; }
+      if (mg) mg.innerHTML = `<span class="msg lose">-KSH ${stake.toLocaleString()}</span>`;
       crashHistory.push(crashMult); renderCrashHist();
-      setTimeout(() => { crashState = 'idle'; multEl.className = 'crash-mult'; multEl.textContent = '1.00x'; line.style.width = '0%'; }, 2000);
+      setTimeout(() => {
+        crashState = 'idle';
+        const e2 = document.getElementById('cmult');
+        const l2 = document.getElementById('cline');
+        if (e2) { e2.className = 'crash-mult'; e2.textContent = '1.00x'; }
+        if (l2) { l2.className = 'crash-line'; l2.style.width = '0%'; }
+      }, 2000);
     }
   }, 80);
 }
 
 async function crashCash() {
   if (crashState !== 'running') return;
-  clearInterval(crashInterval); crashState = 'idle';
-  const stake = parseFloat(document.getElementById('c-stake').value) || 200;
-  const win = Math.round(stake * crashMult);
-  await updateBalance(userBalance + win, 'bet_win', stake, `Crash cashed out at ${crashMult.toFixed(2)}x`);
-  document.getElementById('c-cash').style.display = 'none';
-  document.getElementById('c-start').style.display = 'inline-block';
-  document.getElementById('c-start').textContent = 'Bet & Launch';
-  document.getElementById('c-msg').innerHTML = `<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
+  clearInterval(crashInterval);
+  crashState = 'idle';
+  const stake = parseFloat(document.getElementById('c-stake')?.value) || 200;
+  const winAmount = Math.round(stake * crashMult);
+  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Crash cashed out at ${crashMult.toFixed(2)}x`);
+  const cashBtn = document.getElementById('c-cash');
+  const startBtn = document.getElementById('c-start');
+  const msgEl = document.getElementById('c-msg');
+  if (cashBtn) cashBtn.style.display = 'none';
+  if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.textContent = 'Bet & Launch'; }
+  if (msgEl) msgEl.innerHTML = `<span class="msg win">+KSH ${winAmount.toLocaleString()}</span>`;
   crashHistory.push(crashMult); renderCrashHist();
 }
 
