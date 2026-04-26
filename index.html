@@ -300,14 +300,15 @@ let currentSport = 'epl';
 let refreshTimer = null;
 
 // ─── SPORTS CONFIG ───
+// League IDs verified from thesportsdb.com/sport/leagues
 const SPORTS = [
-  { id: 'epl',       label: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 EPL',      leagueId: '4328', name: 'English Premier League' },
-  { id: 'laliga',    label: '🇪🇸 La Liga',   leagueId: '4335', name: 'La Liga' },
-  { id: 'ucl',       label: '🏆 Champions',  leagueId: '4480', name: 'UEFA Champions League' },
-  { id: 'serieA',    label: '🇮🇹 Serie A',   leagueId: '4332', name: 'Serie A' },
-  { id: 'bundesliga',label: '🇩🇪 Bundesliga',leagueId: '4331', name: 'Bundesliga' },
-  { id: 'nba',       label: '🏀 NBA',         leagueId: '4387', name: 'NBA' },
-  { id: 'nfl',       label: '🏈 NFL',         leagueId: '4391', name: 'NFL' },
+  { id: 'epl',        label: '🏴 EPL',        leagueId: '4328', sport: 'Soccer',     name: 'English Premier League' },
+  { id: 'laliga',     label: '🇪🇸 La Liga',   leagueId: '4335', sport: 'Soccer',     name: 'La Liga' },
+  { id: 'ucl',        label: '🏆 Champions',  leagueId: '4480', sport: 'Soccer',     name: 'UEFA Champions League' },
+  { id: 'serieA',     label: '🇮🇹 Serie A',   leagueId: '4332', sport: 'Soccer',     name: 'Serie A' },
+  { id: 'bundesliga', label: '🇩🇪 Bundesliga',leagueId: '4331', sport: 'Soccer',     name: 'Bundesliga' },
+  { id: 'nba',        label: '🏀 NBA',         leagueId: '4387', sport: 'Basketball', name: 'NBA' },
+  { id: 'nfl',        label: '🏈 NFL',         leagueId: '4391', sport: 'American Football', name: 'NFL' },
 ];
 
 // ─── ODDS GENERATOR ───
@@ -337,27 +338,23 @@ function generateOdds(event) {
 }
 
 // ─── THESPORTSDB FETCH ───
-async function fetchFixtures(leagueId) {
-  // Fetches next 15 events for the league
+async function fetchFixtures(leagueId, sport) {
   const url = `https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id=${leagueId}`;
   try {
     const res = await fetch(url);
     const data = await res.json();
-    return data.events || [];
+    const events = data.events || [];
+    // Filter: only return events that match the expected sport
+    // This prevents EPL results leaking into NBA/NFL tabs
+    const filtered = events.filter(ev => {
+      if (!ev.strSport) return true;
+      return ev.strSport.toLowerCase() === sport.toLowerCase();
+    });
+    return filtered;
   } catch(e) {
     console.error('TheSportsDB fetch error:', e);
     return [];
   }
-}
-
-async function fetchLiveScores(leagueId) {
-  // Live scores — available on free tier (returns today's events)
-  const url = `https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=${leagueId}`;
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    return data.results || [];
-  } catch(e) { return []; }
 }
 
 function formatEventTime(dateStr, timeStr) {
@@ -551,15 +548,29 @@ async function loadSport(id) {
   const sport = SPORTS.find(s => s.id === id);
   if (!sport) return;
   const el = document.getElementById('tab-sports');
-  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:24px;margin-bottom:8px">⏳</div>Loading ${sport.name} fixtures...</div>`;
-  const events = await fetchFixtures(sport.leagueId);
+  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">⏳</div>Loading ${sport.name} fixtures...</div>`;
+  
+  const events = await fetchFixtures(sport.leagueId, sport.sport);
+  
+  // If wrong sport came back or empty, show clear message
+  if (!events.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">📭</div>
+      <div style="font-weight:600;margin-bottom:6px">No upcoming ${sport.name} fixtures right now</div>
+      <div style="font-size:12px">This may be off-season or between rounds. Try another league.</div>
+    </div>`;
+    liveGames = [];
+    return;
+  }
+
+  const isSoccer = sport.sport === 'Soccer';
   liveGames = events.slice(0, 12).map(ev => {
     const odds = generateOdds(ev);
-    const isSoccer = !['4387','4391'].includes(sport.leagueId);
     return { ...ev, ...odds, isSoccer, sportId: id, sportName: sport.name };
   });
   renderSports();
   // Auto-refresh every 5 minutes
+  if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => loadSport(currentSport), 5 * 60 * 1000);
 }
 
