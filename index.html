@@ -248,22 +248,51 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div class="modal">
     <button class="modal-close" onclick="closeModal('deposit-modal')">✕</button>
     <div class="modal-title">Deposit via M-Pesa</div>
-    <div class="field"><label>M-Pesa Phone Number</label><input type="tel" id="mpesa-phone" placeholder="0712345678" maxlength="10"></div>
-    <div class="field"><label>Amount (KSH)</label>
-      <div class="amount-grid">
-        <div class="amount-chip" onclick="setAmount(100)">100</div>
-        <div class="amount-chip" onclick="setAmount(500)">500</div>
-        <div class="amount-chip" onclick="setAmount(1000)">1,000</div>
-        <div class="amount-chip" onclick="setAmount(2000)">2,000</div>
-        <div class="amount-chip" onclick="setAmount(5000)">5,000</div>
-        <div class="amount-chip" onclick="setAmount(10000)">10,000</div>
+
+    <!-- Step 1: Choose amount -->
+    <div id="deposit-step-1">
+      <div class="field"><label>Amount (KSH)</label>
+        <div class="amount-grid">
+          <div class="amount-chip" onclick="setAmount(100)">100</div>
+          <div class="amount-chip" onclick="setAmount(500)">500</div>
+          <div class="amount-chip" onclick="setAmount(1000)">1,000</div>
+          <div class="amount-chip" onclick="setAmount(2000)">2,000</div>
+          <div class="amount-chip" onclick="setAmount(5000)">5,000</div>
+          <div class="amount-chip" onclick="setAmount(10000)">10,000</div>
+        </div>
+        <input type="number" id="deposit-amount" placeholder="Or enter amount" min="50" style="margin-top:8px">
       </div>
-      <input type="number" id="deposit-amount" placeholder="Enter amount" min="50">
+      <div class="mpesa-note">
+        📲 Send M-Pesa to:<br>
+        <b style="font-size:16px;color:var(--accent)">Till: 247247</b> or <b style="font-size:16px;color:var(--accent)">0712 345 678</b><br><br>
+        Use your registered phone number as the account reference.<br>
+        After sending, paste your M-Pesa confirmation code below.
+      </div>
+      <button class="auth-btn" onclick="showDepositStep2()" style="margin-top:14px">I've Sent the Money →</button>
     </div>
-    <div class="mpesa-note">
-      📱 An STK Push will be sent to <b id="phone-preview">your phone</b>. Enter your M-Pesa PIN to complete the deposit. Funds reflect instantly.
+
+    <!-- Step 2: Enter confirmation code -->
+    <div id="deposit-step-2" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:28px;margin-bottom:6px">📱</div>
+        <div style="font-size:13px;color:var(--muted)">Enter the M-Pesa confirmation code from your SMS</div>
+      </div>
+      <div class="field">
+        <label>M-Pesa Code (e.g. QHX7K3LP2R)</label>
+        <input type="text" id="mpesa-code" placeholder="QHX7K3LP2R" style="text-transform:uppercase;letter-spacing:2px;font-size:16px;font-weight:700" maxlength="12">
+      </div>
+      <div class="field">
+        <label>Your Phone Number</label>
+        <input type="tel" id="mpesa-phone" placeholder="0712345678" maxlength="10">
+      </div>
+      <div class="mpesa-note" style="margin-bottom:14px">
+        ⏱ Your deposit will be reviewed and credited within <b>5–15 minutes</b> during business hours. You'll see it reflected in your wallet.
+      </div>
+      <button class="auth-btn" id="deposit-btn" onclick="submitManualDeposit()">Submit Deposit Request</button>
+      <div style="text-align:center;margin-top:10px">
+        <span style="font-size:12px;color:var(--muted);cursor:pointer" onclick="showDepositStep1()">← Back</span>
+      </div>
     </div>
-    <button class="auth-btn" id="deposit-btn" onclick="initiateDeposit()" style="margin-top:14px">Send STK Push</button>
   </div>
 </div>
 
@@ -1046,48 +1075,47 @@ document.getElementById('mpesa-phone').addEventListener('input', function() {
   document.getElementById('phone-preview').textContent = this.value || 'your phone';
 });
 
-async function initiateDeposit() {
-  const phone = document.getElementById('mpesa-phone').value.trim();
+function showDepositStep2() {
   const amount = parseFloat(document.getElementById('deposit-amount').value);
-  if (!phone || phone.length < 9) return showToast('Enter a valid phone number');
-  if (!amount || amount < 50) return showToast('Minimum deposit is KSH 50');
-  const btn = document.getElementById('deposit-btn');
-  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Sending STK Push...';
-  // Call your Vercel API route which triggers Intasend STK Push
-  try {
-    const res = await fetch('/api/deposit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, amount, user_id: currentUser.id })
-    });
-    const data = await res.json();
-    if (data.success) {
-      closeModal('deposit-modal');
-      showToast('📱 STK Push sent! Enter your M-Pesa PIN');
-      // Poll for payment confirmation
-      pollDeposit(data.invoice_id);
-    } else {
-      showToast('Deposit failed: ' + (data.error || 'Unknown error'));
-    }
-  } catch(e) {
-    // Demo mode — simulate deposit
-    const newBal = userBalance + amount;
-    await updateBalance(newBal, 'deposit', amount, 'M-Pesa deposit');
-    closeModal('deposit-modal');
-    showToast(`✅ Deposited KSH ${amount.toLocaleString()} (demo mode)`);
-    renderWallet();
-  }
-  btn.disabled = false; btn.textContent = 'Send STK Push';
+  if (!amount || amount < 50) return showToast('Enter an amount first (min KSH 50)');
+  document.getElementById('deposit-step-1').style.display = 'none';
+  document.getElementById('deposit-step-2').style.display = 'block';
 }
 
-async function pollDeposit(invoiceId, attempts=0) {
-  if (attempts > 15) return;
-  setTimeout(async () => {
-    const res = await fetch(`/api/deposit-status?invoice_id=${invoiceId}`);
-    const data = await res.json();
-    if (data.paid) { await refreshBalance(); showToast('✅ Deposit confirmed!'); renderWallet(); }
-    else pollDeposit(invoiceId, attempts + 1);
-  }, 3000);
+function showDepositStep1() {
+  document.getElementById('deposit-step-1').style.display = 'block';
+  document.getElementById('deposit-step-2').style.display = 'none';
+}
+
+async function submitManualDeposit() {
+  const code = document.getElementById('mpesa-code').value.trim().toUpperCase();
+  const phone = document.getElementById('mpesa-phone').value.trim();
+  const amount = parseFloat(document.getElementById('deposit-amount').value);
+  if (!code || code.length < 8) return showToast('Enter your M-Pesa confirmation code');
+  if (!phone || phone.length < 9) return showToast('Enter your phone number');
+  if (!amount || amount < 50) return showToast('Invalid amount');
+  const btn = document.getElementById('deposit-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Submitting...';
+  try {
+    // Save deposit request to Supabase for admin to verify
+    await sb.from('deposit_requests').insert({
+      user_id: currentUser.id,
+      email: currentUser.email,
+      amount,
+      mpesa_code: code,
+      phone,
+      status: 'pending',
+    });
+    closeModal('deposit-modal');
+    // Reset modal for next time
+    document.getElementById('deposit-step-1').style.display = 'block';
+    document.getElementById('deposit-step-2').style.display = 'none';
+    showToast('✅ Deposit request submitted! Will be credited within 15 minutes.');
+  } catch(e) {
+    showToast('Error submitting request. Please try again.');
+    console.error(e);
+  }
+  btn.disabled = false; btn.textContent = 'Submit Deposit Request';
 }
 
 async function initiateWithdraw() {
@@ -1097,26 +1125,24 @@ async function initiateWithdraw() {
   if (!amount || amount < 100) return showToast('Minimum withdrawal is KSH 100');
   if (amount > userBalance) return showToast('Insufficient balance');
   const btn = document.getElementById('withdraw-btn');
-  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Processing...';
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Submitting...';
   try {
-    const res = await fetch('/api/withdraw', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, amount, user_id: currentUser.id })
+    // Deduct balance immediately and create withdrawal request for admin
+    const newBal = userBalance - amount;
+    await updateBalance(newBal, 'withdrawal', amount, 'M-Pesa withdrawal (pending)');
+    await sb.from('withdrawal_requests').insert({
+      user_id: currentUser.id,
+      email: currentUser.email,
+      amount,
+      phone,
+      status: 'pending',
     });
-    const data = await res.json();
-    if (data.success) {
-      await updateBalance(userBalance - amount, 'withdrawal', amount, 'M-Pesa withdrawal');
-      closeModal('withdraw-modal');
-      showToast(`✅ KSH ${amount.toLocaleString()} sent to ${phone}`);
-      renderWallet();
-    } else showToast('Withdrawal failed: ' + (data.error || 'Unknown error'));
-  } catch(e) {
-    // Demo mode
-    await updateBalance(userBalance - amount, 'withdrawal', amount, 'M-Pesa withdrawal (demo)');
     closeModal('withdraw-modal');
-    showToast(`✅ Withdrew KSH ${amount.toLocaleString()} (demo mode)`);
+    showToast('✅ Withdrawal request submitted! Will be sent within 15 minutes.');
     renderWallet();
+  } catch(e) {
+    showToast('Error submitting withdrawal. Please try again.');
+    console.error(e);
   }
   btn.disabled = false; btn.textContent = 'Withdraw';
 }
