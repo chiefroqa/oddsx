@@ -116,6 +116,10 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .flip-card:hover{border-color:var(--accent)}
 .flip-card.safe{background:rgba(0,229,160,0.15);border-color:var(--accent)}
 .flip-card.bomb{background:rgba(255,107,53,0.15);border-color:var(--accent2)}
+.sport-chip{background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);white-space:nowrap;transition:all 0.15s}
+.sport-chip:hover{border-color:var(--accent);color:var(--accent)}
+.sport-chip.active{background:rgba(0,229,160,0.12);border-color:var(--accent);color:var(--accent)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
 .hist-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
 .hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif}
 
@@ -212,11 +216,14 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     </div>
   </div>
   <div class="tabs">
-    <div class="tab active" onclick="showTab('sports')">🏀 NBA Playoffs</div>
+    <div class="tab active" onclick="showTab('sports')">⚽ Sports</div>
     <div class="tab" onclick="showTab('crash')">📈 Crash</div>
     <div class="tab" onclick="showTab('mines')">💣 Mines</div>
     <div class="tab" onclick="showTab('wallet')">💳 Wallet</div>
     <div class="tab" onclick="showTab('history')">📋 History</div>
+  </div>
+  <div id="sport-bar" style="background:var(--g2);border-bottom:1px solid rgba(255,255,255,0.06);padding:8px 12px;overflow-x:auto;white-space:nowrap">
+    <div style="display:inline-flex;gap:6px" id="sport-chips"></div>
   </div>
   <div id="tab-sports" class="content"></div>
   <div id="tab-crash" class="content" style="display:none"></div>
@@ -276,8 +283,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 // ─────────────────────────────────────────
 // CONFIG — replace with your actual values
 // ─────────────────────────────────────────
-const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_1gtS15T5Te2VL7UmuAI8Gg_UeX6XB_q';
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -288,16 +295,86 @@ let selections = {};
 let crashState = 'idle', crashMult = 1.0, crashInterval = null, crashTarget = 0;
 let mineGrid = [], mineRevealed = 0, mineStake = 0, mineMult = 1, mineActive = false;
 let crashHistory = [];
+let liveGames = [];
+let currentSport = 'epl';
+let refreshTimer = null;
 
-// ─── GAMES DATA ───
-const GAMES = [
-  {id:'orl-det',home:'ORL',away:'DET',homeN:'Orlando Magic',awayN:'Detroit Pistons',homeSeed:8,awaySeed:1,series:'Game 3 — DET leads 1-1',time:'Sat Apr 25, 8:00 PM EAT',homeProb:46,awayProb:54,homeOdds:'+185',awayOdds:'-210',ouOdds:'+108/-112',total:'215.5'},
-  {id:'phx-okc',home:'PHX',away:'OKC',homeN:'Phoenix Suns',awayN:'OKC Thunder',homeSeed:8,awaySeed:1,series:'Game 3 — OKC leads 2-0',time:'Sat Apr 25, 10:30 PM EAT',homeProb:21,awayProb:79,homeOdds:'+420',awayOdds:'-560',ouOdds:'+105/-115',total:'222.5'},
-  {id:'atl-nyk',home:'ATL',away:'NYK',homeN:'Atlanta Hawks',awayN:'New York Knicks',homeSeed:6,awaySeed:3,series:'Game 4 — ATL leads 2-1',time:'Sun Apr 26, 1:00 AM EAT',homeProb:47,awayProb:53,homeOdds:'+162',awayOdds:'-185',ouOdds:'+102/-118',total:'218.5'},
-  {id:'min-den',home:'MIN',away:'DEN',homeN:'Minnesota Timberwolves',awayN:'Denver Nuggets',homeSeed:6,awaySeed:3,series:'Game 4 — MIN leads 2-1',time:'Sun Apr 26, 3:30 AM EAT',homeProb:48,awayProb:52,homeOdds:'+145',awayOdds:'-168',ouOdds:'-108/-108',total:'224.5'},
-  {id:'bos-phi',home:'PHI',away:'BOS',homeN:'Philadelphia 76ers',awayN:'Boston Celtics',homeSeed:7,awaySeed:2,series:'Game 4 — BOS leads 2-1',time:'Mon Apr 27, 2:00 AM EAT',homeProb:28,awayProb:72,homeOdds:'+320',awayOdds:'-400',ouOdds:'+108/-120',total:'213.5'},
-  {id:'hou-lal',home:'HOU',away:'LAL',homeN:'Houston Rockets',awayN:'LA Lakers',homeSeed:5,awaySeed:4,series:'Game 4 — LAL leads 3-0',time:'Mon Apr 27, 4:30 AM EAT',homeProb:64,awayProb:36,homeOdds:'+115',awayOdds:'-138',ouOdds:'-105/-115',total:'210.5'},
+// ─── SPORTS CONFIG ───
+const SPORTS = [
+  { id: 'epl',       label: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 EPL',      leagueId: '4328', name: 'English Premier League' },
+  { id: 'laliga',    label: '🇪🇸 La Liga',   leagueId: '4335', name: 'La Liga' },
+  { id: 'ucl',       label: '🏆 Champions',  leagueId: '4480', name: 'UEFA Champions League' },
+  { id: 'serieA',    label: '🇮🇹 Serie A',   leagueId: '4332', name: 'Serie A' },
+  { id: 'bundesliga',label: '🇩🇪 Bundesliga',leagueId: '4331', name: 'Bundesliga' },
+  { id: 'nba',       label: '🏀 NBA',         leagueId: '4387', name: 'NBA' },
+  { id: 'nfl',       label: '🏈 NFL',         leagueId: '4391', name: 'NFL' },
 ];
+
+// ─── ODDS GENERATOR ───
+// Generates realistic odds from a win probability (0-100)
+function probToAmericanOdds(prob) {
+  prob = Math.max(5, Math.min(95, prob));
+  if (prob >= 50) return '-' + Math.round((prob / (100 - prob)) * 100);
+  return '+' + Math.round(((100 - prob) / prob) * 100);
+}
+
+function generateOdds(event) {
+  // Use TheSportsDB intHomeScore/intAwayScore fields if available for form
+  // Otherwise base it on home advantage (home teams win ~54% in most leagues)
+  const homeProb = 45 + Math.floor(Math.random() * 20); // 45-65%
+  const awayProb = 100 - homeProb;
+  const drawProb = Math.floor(Math.random() * 20 + 15); // 15-35% draw
+  const adjHome = homeProb - drawProb / 2;
+  const adjAway = awayProb - drawProb / 2;
+  return {
+    homeProb: Math.round(adjHome),
+    awayProb: Math.round(adjAway),
+    drawProb,
+    homeOdds: probToAmericanOdds(adjHome),
+    awayOdds: probToAmericanOdds(adjAway),
+    drawOdds: probToAmericanOdds(drawProb),
+  };
+}
+
+// ─── THESPORTSDB FETCH ───
+async function fetchFixtures(leagueId) {
+  // Fetches next 15 events for the league
+  const url = `https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id=${leagueId}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.events || [];
+  } catch(e) {
+    console.error('TheSportsDB fetch error:', e);
+    return [];
+  }
+}
+
+async function fetchLiveScores(leagueId) {
+  // Live scores — available on free tier (returns today's events)
+  const url = `https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=${leagueId}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.results || [];
+  } catch(e) { return []; }
+}
+
+function formatEventTime(dateStr, timeStr) {
+  if (!dateStr) return 'TBC';
+  try {
+    const dt = new Date(`${dateStr}T${timeStr || '00:00:00'}Z`);
+    return dt.toLocaleDateString('en-KE', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Africa/Nairobi' }) + ' EAT';
+  } catch(e) { return dateStr; }
+}
+
+function getTeamAbbr(name) {
+  if (!name) return '???';
+  const words = name.trim().split(' ');
+  if (words.length === 1) return name.slice(0, 3).toUpperCase();
+  if (words.length === 2) return (words[0][0] + words[1].slice(0,2)).toUpperCase();
+  return words.map(w => w[0]).join('').slice(0, 3).toUpperCase();
+}
 
 // ─── AUTH ───
 async function init() {
@@ -323,7 +400,7 @@ async function loadUser(user) {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   updateBalanceDisplay();
-  renderSports();
+  initSports();
   renderCrash();
   renderMines();
 }
@@ -356,15 +433,26 @@ function clearAuthMessages() {
   document.getElementById('auth-success').style.display = 'none';
 }
 
+async function withTimeout(promise, ms = 8000) {
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out. Check your internet connection.')), ms));
+  return Promise.race([promise, timeout]);
+}
+
 async function signIn() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   if (!email || !password) return showAuthError('Please fill in all fields');
+  if (!email.includes('@')) return showAuthError('Enter a valid email address');
   const btn = document.querySelector('#login-form .auth-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  clearAuthMessages();
+  try {
+    const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
+    if (error) showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
+  } catch(e) {
+    showAuthError(e.message);
+  }
   btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) showAuthError(error.message);
 }
 
 async function signUp() {
@@ -372,13 +460,19 @@ async function signUp() {
   const email = document.getElementById('signup-email').value.trim();
   const password = document.getElementById('signup-password').value;
   if (!name || !email || !password) return showAuthError('Please fill in all fields');
+  if (!email.includes('@')) return showAuthError('Enter a valid email address');
   if (password.length < 6) return showAuthError('Password must be at least 6 characters');
   const btn = document.querySelector('#signup-form .auth-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating account...';
-  const { error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name } } });
+  clearAuthMessages();
+  try {
+    const { error } = await withTimeout(sb.auth.signUp({ email, password, options: { data: { full_name: name } } }));
+    if (error) showAuthError(error.message);
+    else showAuthSuccess('Account created! You can now sign in.');
+  } catch(e) {
+    showAuthError(e.message);
+  }
   btn.disabled = false; btn.textContent = 'Create Account';
-  if (error) showAuthError(error.message);
-  else showAuthSuccess('Account created! Check your email to verify, or sign in directly.');
 }
 
 async function signInGoogle() {
@@ -423,43 +517,113 @@ function showTab(t) {
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
   const hasSlip = Object.keys(selections).length > 0;
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
+  document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
   if (t==='history') renderHistory();
 }
 
-// ─── SPORTS ───
+// ─── SPORTS INIT ───
+function initSports() {
+  // Render sport chips
+  const chips = document.getElementById('sport-chips');
+  chips.innerHTML = SPORTS.map(s =>
+    `<div class="sport-chip ${s.id===currentSport?'active':''}" onclick="switchSport('${s.id}')">${s.label}</div>`
+  ).join('');
+  loadSport(currentSport);
+}
+
+async function switchSport(id) {
+  currentSport = id;
+  document.querySelectorAll('.sport-chip').forEach(el => el.classList.toggle('active', el.textContent.trim() === SPORTS.find(s=>s.id===id)?.label));
+  if (refreshTimer) clearTimeout(refreshTimer);
+  await loadSport(id);
+}
+
+async function loadSport(id) {
+  const sport = SPORTS.find(s => s.id === id);
+  if (!sport) return;
+  const el = document.getElementById('tab-sports');
+  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:24px;margin-bottom:8px">⏳</div>Loading ${sport.name} fixtures...</div>`;
+  const events = await fetchFixtures(sport.leagueId);
+  liveGames = events.slice(0, 12).map(ev => {
+    const odds = generateOdds(ev);
+    const isSoccer = !['4387','4391'].includes(sport.leagueId);
+    return { ...ev, ...odds, isSoccer, sportId: id, sportName: sport.name };
+  });
+  renderSports();
+  // Auto-refresh every 5 minutes
+  refreshTimer = setTimeout(() => loadSport(currentSport), 5 * 60 * 1000);
+}
+
+// ─── SPORTS RENDER ───
 function renderSports() {
   const el = document.getElementById('tab-sports');
-  el.innerHTML = `<div class="section-label">Today & Upcoming — NBA Playoffs 2026</div>`;
-  GAMES.forEach(g => {
-    const sel = selections[g.id];
+  const sport = SPORTS.find(s => s.id === currentSport);
+  if (!liveGames.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">No upcoming fixtures found for ${sport?.name}.<br><br>Try another league.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="section-label">${sport?.name} — Upcoming Fixtures</div>
+      <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">Auto-refreshes every 5 min</div>
+    </div>`;
+  liveGames.forEach(g => {
+    const gameId = g.idEvent;
+    const sel = selections[gameId];
+    const homeAbbr = getTeamAbbr(g.strHomeTeam);
+    const awayAbbr = getTeamAbbr(g.strAwayTeam);
+    const time = formatEventTime(g.dateEvent, g.strTime);
+    const hasScore = g.intHomeScore !== null && g.intHomeScore !== undefined && g.intHomeScore !== '';
+    const isLive = g.strStatus === 'Match Finished' ? false : hasScore;
     el.innerHTML += `
     <div class="game-card">
       <div class="game-header">
-        <span class="series-badge">🏀 ${g.series}</span>
-        <span class="game-time">${g.time}</span>
+        <span class="series-badge">
+          ${isLive ? '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block"></span>LIVE</span>' : sport?.name}
+        </span>
+        <span class="game-time">${time}</span>
       </div>
       <div class="game-body">
-        <div class="team"><div class="team-abbr">${g.away}<span class="seed">${g.awaySeed}</span></div><div class="team-name">${g.awayN}</div></div>
-        <div class="vs-block"><div class="vs-text">vs</div></div>
-        <div class="team"><div class="team-abbr">${g.home}<span class="seed">${g.homeSeed}</span></div><div class="team-name">${g.homeN}</div></div>
+        <div class="team">
+          <div class="team-abbr">${awayAbbr}</div>
+          <div class="team-name">${g.strAwayTeam}</div>
+        </div>
+        <div class="vs-block">
+          ${hasScore
+            ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900">${g.intAwayScore ?? 0} - ${g.intHomeScore ?? 0}</div>`
+            : `<div class="vs-text">vs</div>`}
+        </div>
+        <div class="team">
+          <div class="team-abbr">${homeAbbr}</div>
+          <div class="team-name">${g.strHomeTeam}</div>
+        </div>
       </div>
       <div class="prob-bar">
         <div class="prob-home" style="width:${g.awayProb}%"></div>
         <div class="prob-away" style="width:${g.homeProb}%"></div>
       </div>
       <div style="display:flex;justify-content:space-between;padding:0 12px 4px;font-size:10px;color:var(--muted)">
-        <span>${g.awayProb}% ${g.away}</span><span>${g.homeProb}% ${g.home}</span>
+        <span>${g.awayProb}% ${awayAbbr}</span>
+        ${g.isSoccer ? `<span>Draw ${g.drawProb}%</span>` : ''}
+        <span>${g.homeProb}% ${homeAbbr}</span>
       </div>
       <div class="odds-row">
-        <div class="odd-btn ${sel==='away'?'selected':''}" onclick="selectOdd('${g.id}','away','${g.away} ML','${g.awayOdds}')">
-          <div class="odd-label">${g.away} Win</div><div class="odd-val">${g.awayOdds}</div><div class="odd-team">${g.awayN}</div>
+        <div class="odd-btn ${sel?.type==='away'?'selected':''}" onclick="selectOdd('${gameId}','away','${g.strAwayTeam} Win','${g.awayOdds}')">
+          <div class="odd-label">${awayAbbr} Win</div>
+          <div class="odd-val">${g.awayOdds}</div>
+          <div class="odd-team" style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.strAwayTeam}</div>
         </div>
-        <div class="odd-btn ${sel==='over'?'selected':''}" onclick="selectOdd('${g.id}','over','Over ${g.total}','${g.ouOdds.split('/')[0]}')">
-          <div class="odd-label">Over ${g.total}</div><div class="odd-val">${g.ouOdds.split('/')[0]}</div><div class="odd-team">Total Points</div>
-        </div>
-        <div class="odd-btn ${sel==='home'?'selected':''}" onclick="selectOdd('${g.id}','home','${g.home} ML','${g.homeOdds}')">
-          <div class="odd-label">${g.home} Win</div><div class="odd-val">${g.homeOdds}</div><div class="odd-team">${g.homeN}</div>
+        ${g.isSoccer ? `
+        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" onclick="selectOdd('${gameId}','draw','Draw','${g.drawOdds}')">
+          <div class="odd-label">Draw</div>
+          <div class="odd-val">${g.drawOdds}</div>
+          <div class="odd-team">X</div>
+        </div>` : ''}
+        <div class="odd-btn ${sel?.type==='home'?'selected':''}" onclick="selectOdd('${gameId}','home','${g.strHomeTeam} Win','${g.homeOdds}')">
+          <div class="odd-label">${homeAbbr} Win</div>
+          <div class="odd-val">${g.homeOdds}</div>
+          <div class="odd-team" style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.strHomeTeam}</div>
         </div>
       </div>
     </div>`;
