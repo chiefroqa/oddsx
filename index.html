@@ -302,12 +302,12 @@ let refreshTimer = null;
 // ─── SPORTS CONFIG ───
 // League IDs verified from thesportsdb.com/sport/leagues
 const SPORTS = [
-  { id: 'epl',        label: '🏴 EPL',        leagueId: '4328', sport: 'Soccer',     name: 'English Premier League' },
-  { id: 'laliga',     label: '🇪🇸 La Liga',   leagueId: '4335', sport: 'Soccer',     name: 'La Liga' },
-  { id: 'ucl',        label: '🏆 Champions',  leagueId: '4480', sport: 'Soccer',     name: 'UEFA Champions League' },
-  { id: 'serieA',     label: '🇮🇹 Serie A',   leagueId: '4332', sport: 'Soccer',     name: 'Serie A' },
-  { id: 'bundesliga', label: '🇩🇪 Bundesliga',leagueId: '4331', sport: 'Soccer',     name: 'Bundesliga' },
-  { id: 'nba',        label: '🏀 NBA',         leagueId: '4387', sport: 'Basketball', name: 'NBA' },
+  { id: 'epl',        label: '🏴 EPL',        leagueId: '4328', sport: 'Soccer',           name: 'English Premier League' },
+  { id: 'laliga',     label: '🇪🇸 La Liga',   leagueId: '4335', sport: 'Soccer',           name: 'La Liga' },
+  { id: 'ucl',        label: '🏆 UCL',         leagueId: '4480', sport: 'Soccer',           name: 'UEFA Champions League' },
+  { id: 'serieA',     label: '🇮🇹 Serie A',   leagueId: '4332', sport: 'Soccer',           name: 'Serie A' },
+  { id: 'bundesliga', label: '🇩🇪 Bundesliga',leagueId: '4331', sport: 'Soccer',           name: 'Bundesliga' },
+  { id: 'nba',        label: '🏀 NBA',         leagueId: '4387', sport: 'Basketball',       name: 'NBA' },
   { id: 'nfl',        label: '🏈 NFL',         leagueId: '4391', sport: 'American Football', name: 'NFL' },
 ];
 
@@ -338,23 +338,36 @@ function generateOdds(event) {
 }
 
 // ─── THESPORTSDB FETCH ───
-async function fetchFixtures(leagueId, sport) {
-  const url = `https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id=${leagueId}`;
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    const events = data.events || [];
-    // Filter: only return events that match the expected sport
-    // This prevents EPL results leaking into NBA/NFL tabs
-    const filtered = events.filter(ev => {
-      if (!ev.strSport) return true;
-      return ev.strSport.toLowerCase() === sport.toLowerCase();
-    });
-    return filtered;
-  } catch(e) {
-    console.error('TheSportsDB fetch error:', e);
-    return [];
+// Free key "3" only returns 1 event from eventsnextleague — useless for a feed.
+// Instead we use eventsday.php (up to 5 events free) across today + next 6 days,
+// filtered by sport name. This gives us a real multi-day fixture list.
+async function fetchFixtures(leagueId, sportName) {
+  const results = [];
+  const today = new Date();
+
+  // Fetch today + next 6 days in parallel
+  const fetches = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    // eventsday.php: free limit 5, filter by sport
+    const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=${encodeURIComponent(sportName)}`;
+    fetches.push(fetch(url).then(r => r.json()).catch(() => ({ events: null })));
   }
+
+  const responses = await Promise.all(fetches);
+  for (const data of responses) {
+    if (data.events) {
+      for (const ev of data.events) {
+        // Only include events from the requested league
+        if (String(ev.idLeague) === String(leagueId)) {
+          results.push(ev);
+        }
+      }
+    }
+  }
+  return results;
 }
 
 function formatEventTime(dateStr, timeStr) {
@@ -548,7 +561,11 @@ async function loadSport(id) {
   const sport = SPORTS.find(s => s.id === id);
   if (!sport) return;
   const el = document.getElementById('tab-sports');
-  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)"><div style="font-size:28px;margin-bottom:8px">⏳</div>Loading ${sport.name} fixtures...</div>`;
+  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">
+    <div style="font-size:28px;margin-bottom:8px">⏳</div>
+    <div style="font-weight:600;margin-bottom:4px">Loading ${sport.name}</div>
+    <div style="font-size:12px">Fetching next 7 days of fixtures...</div>
+  </div>`;
   
   const events = await fetchFixtures(sport.leagueId, sport.sport);
   
