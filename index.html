@@ -1169,95 +1169,88 @@ function renderCrashHist() {
 
 async function crashStart() {
   if (crashState !== 'idle') return;
-  const stakeInput = document.getElementById('c-stake');
-  const stake = parseFloat(stakeInput?.value) || 0;
+  const stake = parseFloat(document.getElementById('c-stake')?.value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
 
-  // Disable button immediately to prevent double-click
   const startBtn = document.getElementById('c-start');
   const cashBtn = document.getElementById('c-cash');
+  const multEl = document.getElementById('cmult');
+  const msgEl = document.getElementById('c-msg');
+
+  // Guard — make sure we're still on the crash tab
+  if (!multEl) return showToast('Please stay on the Crash tab');
+
   if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting...'; }
 
   await updateBalance(userBalance - stake, 'bet_loss', stake, 'Crash game');
 
-  // Get fresh DOM refs after balance update
-  const multEl = document.getElementById('cmult');
-  const line = document.getElementById('cline');
-  const msgEl = document.getElementById('c-msg');
-
-  if (!multEl || !line) {
-    // Tab was switched during await — abort
-    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Bet & Launch'; }
+  // After await, re-check we're still on crash tab
+  const checkEl = document.getElementById('cmult');
+  if (!checkEl) {
+    showToast('Stake deducted — switched tab during launch');
     return;
   }
 
   crashState = 'running';
   crashMult = 1.0;
-  crashTarget = 1.1 + Math.random() * 7 * (Math.random() < 0.2 ? 0.3 : 1);
+  crashTarget = 1.1 + Math.random() * 6 * (Math.random() < 0.25 ? 0.25 : 1);
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
-  if (cashBtn) cashBtn.style.display = 'inline-block';
+  if (cashBtn) { cashBtn.style.display = 'inline-block'; }
   if (msgEl) msgEl.innerHTML = '';
-  line.className = 'crash-line'; line.style.width = '0%';
-  multEl.className = 'crash-mult';
+  checkEl.textContent = '1.00x';
+  checkEl.style.color = '#00e5a0';
+  checkEl.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
 
-  // Re-init canvas fresh for this round
+  // Init canvas for this round
   initCrashCanvas();
   canvasPoints = [{ y: 1 }];
+  drawCrashCanvas(false);
 
   if (crashInterval) clearInterval(crashInterval);
+
   crashInterval = setInterval(() => {
-    const el = document.getElementById('cmult');
-    if (!el) { clearInterval(crashInterval); crashState = 'idle'; return; }
+    // Always get fresh refs — DOM could have changed
+    const m = document.getElementById('cmult');
+    if (!m) { clearInterval(crashInterval); crashState = 'idle'; return; }
 
     crashMult = +(crashMult * 1.018).toFixed(2);
-    el.textContent = crashMult.toFixed(2) + 'x';
-    el.style.color = '#00e5a0';
-    el.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
+    m.textContent = crashMult.toFixed(2) + 'x';
+    m.style.color = '#00e5a0';
+    m.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
 
-    // Feed canvas
     canvasPoints.push({ y: crashMult });
     drawCrashCanvas(false);
 
     if (crashMult >= crashTarget) {
       clearInterval(crashInterval);
       crashState = 'crashed';
-      // Crash visual
-      el.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
-      el.style.color = '#ff6b35';
-      el.style.textShadow = '0 0 30px rgba(255,107,53,0.6)';
+
+      m.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
+      m.style.color = '#ff6b35';
+      m.style.textShadow = '0 0 40px rgba(255,107,53,0.8)';
       drawCrashCanvas(true);
 
       const cb = document.getElementById('c-cash');
-      const sb2 = document.getElementById('c-start');
+      const sb = document.getElementById('c-start');
       const mg = document.getElementById('c-msg');
       if (cb) cb.style.display = 'none';
-      if (sb2) { sb2.style.display = 'inline-block'; sb2.textContent = '🚀 Try Again'; }
+      if (sb) { sb.style.display = 'inline-block'; sb.textContent = '🚀 Try Again'; }
       if (mg) mg.innerHTML = `<span class="msg lose">-KSH ${stake.toLocaleString()}</span>`;
-      crashHistory.push(crashMult); renderCrashHist();
+      crashHistory.push(crashMult);
+      renderCrashHist();
 
       setTimeout(() => {
         crashState = 'idle';
         canvasPoints = [];
-        // Re-init canvas cleanly
         initCrashCanvas();
-        const e2 = document.getElementById('cmult');
-        if (e2) {
-          e2.textContent = '1.00x';
-          e2.style.color = '#00e5a0';
-          e2.style.textShadow = '0 0 30px rgba(0,229,160,0.5)';
-        }
-        const rocket = document.getElementById('crash-rocket');
-        if (rocket) {
-          rocket.textContent = '🚀';
-          rocket.style.left = '20px';
-          rocket.style.bottom = '20px';
-          rocket.style.transform = 'rotate(-45deg)';
-          rocket.style.fontSize = '28px';
-        }
-        const sb3 = document.getElementById('c-start');
-        if (sb3) { sb3.style.display = 'inline-block'; sb3.disabled = false; sb3.textContent = '🚀 Launch'; }
+        const m2 = document.getElementById('cmult');
+        if (m2) { m2.textContent = '1.00x'; m2.style.color = '#00e5a0'; m2.style.textShadow = '0 0 30px rgba(0,229,160,0.5)'; }
+        const r = document.getElementById('crash-rocket');
+        if (r) { r.textContent = '🚀'; r.style.left = '20px'; r.style.bottom = '20px'; r.style.transform = 'rotate(-45deg)'; r.style.fontSize = '28px'; }
+        const sb2 = document.getElementById('c-start');
+        if (sb2) { sb2.style.display = 'inline-block'; sb2.disabled = false; sb2.textContent = '🚀 Launch'; }
       }, 3000);
     }
   }, 80);
@@ -1269,17 +1262,17 @@ async function crashCash() {
   crashState = 'idle';
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 200;
   const winAmount = Math.round(stake * crashMult);
-  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Crash cashed out at ${crashMult.toFixed(2)}x`);
-  const cashBtn = document.getElementById('c-cash');
-  const startBtn = document.getElementById('c-start');
-  const msgEl = document.getElementById('c-msg');
-  if (cashBtn) cashBtn.style.display = 'none';
-  if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.textContent = '🚀 Launch'; }
-  if (msgEl) msgEl.innerHTML = `<span class="msg win">+KSH ${winAmount.toLocaleString()}</span>`;
-  // Show cashout point on canvas as a dot
-  const el2 = document.getElementById('cmult');
-  if (el2) { el2.style.color = '#ffc947'; el2.style.textShadow = '0 0 30px rgba(255,201,71,0.5)'; }
-  crashHistory.push(crashMult); renderCrashHist();
+  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Crash x${crashMult.toFixed(2)}`);
+  const m = document.getElementById('cmult');
+  if (m) { m.style.color = '#ffc947'; m.style.textShadow = '0 0 30px rgba(255,201,71,0.6)'; }
+  const cb = document.getElementById('c-cash');
+  const sb = document.getElementById('c-start');
+  const mg = document.getElementById('c-msg');
+  if (cb) cb.style.display = 'none';
+  if (sb) { sb.style.display = 'inline-block'; sb.textContent = '🚀 Launch'; }
+  if (mg) mg.innerHTML = `<span class="msg win">+KSH ${winAmount.toLocaleString()}</span>`;
+  crashHistory.push(crashMult);
+  renderCrashHist();
 }
 
 // ─── MINES ───
