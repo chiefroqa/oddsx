@@ -299,6 +299,172 @@ let liveGames = [];
 let currentSport = 'epl';
 let refreshTimer = null;
 
+// ─── AUTH & CORE ───
+async function withTimeout(promise, ms = 10000) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Request timed out. Check your internet connection.')), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await loadUser(session.user);
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (session) await loadUser(session.user);
+    else showAuthScreen();
+  });
+}
+
+async function loadUser(user) {
+  currentUser = user;
+  let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
+  if (!profile) {
+    await sb.from('profiles').insert({
+      id: user.id, email: user.email,
+      full_name: user.user_metadata?.full_name || '',
+      balance: 1000
+    });
+    ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
+  }
+  userBalance = profile?.balance || 0;
+  const initials = (profile?.full_name || user.email || '?')[0].toUpperCase();
+  document.getElementById('avatar-init').textContent = initials;
+  document.getElementById('dd-email').textContent = user.email;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  updateBalanceDisplay();
+  initSports();
+  renderCrash();
+  renderMines();
+}
+
+function showAuthScreen() {
+  currentUser = null;
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+}
+
+function switchAuthTab(t) {
+  document.querySelectorAll('.auth-tab').forEach((el, i) =>
+    el.classList.toggle('active', ['login','signup'][i] === t)
+  );
+  document.getElementById('login-form').style.display = t === 'login' ? 'block' : 'none';
+  document.getElementById('signup-form').style.display = t === 'signup' ? 'block' : 'none';
+  clearAuthMessages();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('auth-success').style.display = 'none';
+}
+function showAuthSuccess(msg) {
+  const el = document.getElementById('auth-success');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('auth-error').style.display = 'none';
+}
+function clearAuthMessages() {
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-success').style.display = 'none';
+}
+
+async function signIn() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) return showAuthError('Please fill in all fields');
+  if (!email.includes('@')) return showAuthError('Enter a valid email address');
+  const btn = document.querySelector('#login-form .auth-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
+  clearAuthMessages();
+  try {
+    const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
+    if (error) showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
+  } catch(e) { showAuthError(e.message); }
+  btn.disabled = false; btn.textContent = 'Sign In';
+}
+
+async function signUp() {
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  if (!name || !email || !password) return showAuthError('Please fill in all fields');
+  if (!email.includes('@')) return showAuthError('Enter a valid email address');
+  if (password.length < 6) return showAuthError('Password must be at least 6 characters');
+  const btn = document.querySelector('#signup-form .auth-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating account...';
+  clearAuthMessages();
+  try {
+    const { error } = await withTimeout(sb.auth.signUp({
+      email, password, options: { data: { full_name: name } }
+    }));
+    if (error) showAuthError(error.message);
+    else showAuthSuccess('Account created! You can now sign in.');
+  } catch(e) { showAuthError(e.message); }
+  btn.disabled = false; btn.textContent = 'Create Account';
+}
+
+async function signInGoogle() {
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin }
+  });
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  toggleDropdown(true);
+}
+
+function toggleDropdown(forceClose) {
+  const dd = document.getElementById('dropdown');
+  dd.classList.toggle('open', forceClose ? false : !dd.classList.contains('open'));
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('avatar-btn')?.contains(e.target))
+    document.getElementById('dropdown')?.classList.remove('open');
+});
+
+// ─── BALANCE ───
+function updateBalanceDisplay() {
+  document.getElementById('bal-display').textContent = 'KSH ' + userBalance.toLocaleString();
+}
+
+async function refreshBalance() {
+  const { data } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
+  if (data) { userBalance = data.balance; updateBalanceDisplay(); }
+}
+
+async function updateBalance(newBalance, txType, txAmount, txLabel) {
+  await sb.from('profiles').update({ balance: newBalance }).eq('id', currentUser.id);
+  await sb.from('transactions').insert({
+    user_id: currentUser.id, type: txType, amount: txAmount,
+    label: txLabel, balance_after: newBalance
+  });
+  userBalance = newBalance;
+  updateBalanceDisplay();
+}
+
+// ─── TABS ───
+function showTab(t) {
+  const tabs = ['sports','crash','mines','wallet','history'];
+  tabs.forEach(id => document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none');
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
+  const hasSlip = Object.keys(selections).length > 0;
+  document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
+  document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
+  if (t==='wallet') renderWallet();
+  if (t==='history') renderHistory();
+}
+
+// ─── TOAST ───
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+
 // ─── SPORTS CONFIG ───
 // All data from ESPN's free undocumented API — no key required
 const SPORTS = [
@@ -900,11 +1066,7 @@ async function initiateWithdraw() {
 }
 
 // ─── TOAST ───
-function showToast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3500);
-}
+
 
 init();
 </script>
