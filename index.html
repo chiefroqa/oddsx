@@ -296,7 +296,7 @@ let crashState = 'idle', crashMult = 1.0, crashInterval = null, crashTarget = 0;
 let mineGrid = [], mineRevealed = 0, mineStake = 0, mineMult = 1, mineActive = false;
 let crashHistory = [];
 let liveGames = [];
-let currentSport = 'epl';
+let currentSport = 'soccer';
 let refreshTimer = null;
 
 // ─── AUTH & CORE ───
@@ -466,25 +466,39 @@ function showToast(msg) {
 
 
 // ─── SPORTS CONFIG ───
-// All data from ESPN's free undocumented API — no key required
+// Each sport fetches ALL games across ALL competitions from ESPN's free API.
+// Soccer shows EPL, La Liga, UCL, FA Cup, Serie A, Bundesliga, friendlies — everything.
+// No league filtering — if ESPN has it, it shows up.
 const SPORTS = [
-  { id:'epl',        label:'🏴 EPL',        name:'English Premier League', espn:'soccer/eng.1',        isSoccer:true  },
-  { id:'laliga',     label:'🇪🇸 La Liga',   name:'La Liga',               espn:'soccer/esp.1',        isSoccer:true  },
-  { id:'ucl',        label:'🏆 UCL',         name:'UEFA Champions League', espn:'soccer/uefa.champions',isSoccer:true  },
-  { id:'serieA',     label:'🇮🇹 Serie A',   name:'Serie A',               espn:'soccer/ita.1',        isSoccer:true  },
-  { id:'bundesliga', label:'🇩🇪 Bundesliga',name:'Bundesliga',            espn:'soccer/ger.1',        isSoccer:true  },
-  { id:'nba',        label:'🏀 NBA',         name:'NBA Playoffs',          espn:'basketball/nba',      isSoccer:false },
-  { id:'nfl',        label:'🏈 NFL',         name:'NFL',                   espn:'football/nfl',        isSoccer:false },
+  { id:'soccer',     label:'⚽ Football',   name:'Football',    espn:'soccer',      isSoccer:true  },
+  { id:'nba',        label:'🏀 Basketball', name:'Basketball',  espn:'basketball',  isSoccer:false },
+  { id:'nfl',        label:'🏈 NFL',        name:'NFL',         espn:'football/nfl',isSoccer:false },
+  { id:'baseball',   label:'⚾ Baseball',   name:'Baseball',    espn:'baseball',    isSoccer:false },
+  { id:'hockey',     label:'🏒 Hockey',     name:'Hockey',      espn:'hockey',      isSoccer:false },
+  { id:'rugby',      label:'🏉 Rugby',      name:'Rugby',       espn:'rugby',       isSoccer:false },
+  { id:'cricket',    label:'🏏 Cricket',    name:'Cricket',     espn:'cricket',     isSoccer:false },
 ];
 
 // ─── ESPN API FETCH ───
-// site.api.espn.com is ESPN's free undocumented public API — no key, no limits
+// Fetches ALL games for a sport — every league, cup, and tournament ESPN tracks.
+// Soccer endpoint alone covers EPL, La Liga, UCL, FA Cup, Bundesliga, Serie A,
+// Conference League, international fixtures, friendlies — everything.
 async function fetchESPN(sportPath) {
   const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard`;
   try {
     const res = await fetch(url);
     const data = await res.json();
-    return data.events || [];
+    // Top-level events OR nested inside leagues
+    if (data.events?.length) return data.events;
+    // Some sport endpoints nest under leagues array
+    if (data.leagues) {
+      const all = [];
+      for (const league of data.leagues) {
+        if (league.events) all.push(...league.events);
+      }
+      if (all.length) return all;
+    }
+    return [];
   } catch(e) {
     console.error('ESPN fetch error:', e);
     return [];
@@ -503,6 +517,12 @@ function parseESPNEvent(ev, sport) {
   const isLive = status?.state === 'in';
   const isFinal = status?.state === 'post';
   const isScheduled = status?.state === 'pre';
+
+  // Competition name (FA Cup, UCL, EPL, NBA Playoffs etc.)
+  const competitionName = ev.competitions?.[0]?.league?.shortName
+    || ev.competitions?.[0]?.league?.name
+    || ev.season?.slug?.replace(/-/g,' ')
+    || '';
 
   // Series info for playoffs
   const seriesSummary = ev.competitions?.[0]?.series?.summary || null;
@@ -537,6 +557,7 @@ function parseESPNEvent(ev, sport) {
     isLive, isFinal, isScheduled,
     statusDetail: status?.shortDetail || '',
     timeDisplay,
+    competitionName,
     series: seriesSummary,
     seriesNote,
     isSoccer: sport.isSoccer,
@@ -643,8 +664,8 @@ function renderSports() {
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
-      <div class="section-label">${sport?.name}</div>
-      <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">🔄 Live · updates every 60s</div>
+      <div class="section-label">${sport?.name} · ${sorted.length} game${sorted.length!==1?'s':''}</div>
+      <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">🔄 updates every 60s</div>
     </div>`;
 
   sorted.forEach(g => {
@@ -669,7 +690,7 @@ function renderSports() {
     el.innerHTML += `
     <div class="game-card">
       <div class="game-header">
-        <span class="series-badge">${sport?.name}</span>
+        <span class="series-badge">${g.competitionName || sport?.name}</span>
         ${statusBadge}
       </div>
       ${seriesLine}
