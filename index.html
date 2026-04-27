@@ -991,7 +991,7 @@ async function placeBet() {
   const mult = bets.reduce((a, b) => a * oddsToDecimal(b.odds), 1);
   const potentialPayout = Math.round(stake * mult);
   // Save bet as PENDING — admin settles it after games finish
-  await sb.from('bets').insert({
+  const { data: insertedBet, error: insertError } = await sb.from('bets').insert({
     user_id: currentUser.id,
     selections: bets,
     stake,
@@ -999,7 +999,15 @@ async function placeBet() {
     potential_payout: potentialPayout,
     status: 'pending',
     payout: 0,
-  });
+  }).select();
+  
+  if (insertError || !insertedBet || !insertedBet[0]) {
+    btn.disabled = false; btn.textContent = 'Place Bet';
+    return showToast('Error placing bet. Please try again.');
+  }
+  
+  const betId = insertedBet[0].id;
+  
   // Deduct stake immediately, payout credited automatically on settlement
   await updateBalance(userBalance - stake, 'bet_loss', stake, `${bets.length}-leg accumulator (pending)`);
   // Lock each game from further betting
@@ -1010,26 +1018,26 @@ async function placeBet() {
   btn.disabled = false; btn.textContent = 'Place Bet';
   renderSports();
   showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
-  // Start watching for result
-  bets.forEach(b => watchForResult(b.gameId, b.type));
+  // Start watching for result — pass bet ID so we can update the correct bet record
+  bets.forEach(b => watchForResult(b.gameId, betId, b.type, bets));
 }
 
 // ─── PEPEA ───
 // ─── AUTO BET SETTLEMENT ───
 // Polls every 60s — when a game finishes, determines winner from ESPN
 // score and auto-credits payout. No admin needed.
-async function watchForResult(gameId, bet) {
+async function watchForResult(gameId, betId, selectionType, allSelections) {
   const poll = setInterval(async () => {
     const game = liveGames.find(g => g.id === gameId);
     if (!game) return;
     if (game.isFinal) {
       clearInterval(poll);
-      await settleBetFromResult(bet, game);
+      await settleBetFromResult(betId, allSelections, game);
     }
   }, 60000);
 }
 
-async function settleBetFromResult(bet, game) {
+async function settleBetFromResult(betId, allSelections, game) {
   const homeScore = parseInt(game.homeScore) || 0;
   const awayScore = parseInt(game.awayScore) || 0;
 
@@ -1039,27 +1047,31 @@ async function settleBetFromResult(bet, game) {
 
   // For accumulator — check ALL selections
   // Any selection referencing this game gets evaluated; others pass by default
-  const allCorrect = bet.selections.every(sel => {
+  const allCorrect = allSelections.every(sel => {
     if (sel.gameId !== game.id) return true; // leg for a different game
     return sel.type === result;
   });
 
-  const won = allCorrect;
-  const payout = won ? bet.potential_payout : 0;
+  // Get the current bet to find stake and potential payout
+  const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
+  if (!betData) return;
 
-  await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', bet.id);
+  const won = allCorrect;
+  const payout = won ? betData.potential_payout : 0;
+
+  await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', betId);
 
   if (won) {
     const newBal = userBalance + payout;
     await updateBalance(newBal, 'bet_win', payout,
       `Bet won — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
-    showToast(`🎉 Bet WON! +KSH ${(payout - bet.stake).toLocaleString()} credited!`);
+    showToast(`🎉 Bet WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
   } else {
     // Write a settled transaction so it appears in wallet history too
     await sb.from('transactions').insert({
       user_id: currentUser.id,
       type: 'bet_loss',
-      amount: bet.stake,
+      amount: betData.stake,
       label: `Bet lost — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`,
       balance_after: userBalance
     });
@@ -1091,11 +1103,13 @@ async function resumePendingBets() {
     .eq('status', 'pending');
   if (!bets?.length) return;
   // Restore placedGameIds so user can't double-bet
+  // And watch each game for results to auto-settle the bet
   bets.forEach(bet => {
     bet.selections?.forEach(sel => {
       if (sel.gameId) {
         placedGameIds.add(sel.gameId);
-        watchForResult(sel.gameId, bet);
+        // Pass the bet ID and all selections so we can update the correct bet when game ends
+        watchForResult(sel.gameId, bet.id, sel.type, bet.selections);
       }
     });
   });
