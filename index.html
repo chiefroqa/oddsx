@@ -1555,8 +1555,8 @@ function renderMines() {
   
   el.innerHTML = `
     <div class="mini-game">
-      <div class="mini-title">💣 Mines</div>
-      <div class="mini-desc">Reveal gems to multiply your bet. Hit a bomb and lose it all. 3 bombs in 16 tiles.</div>
+      <div class="mini-title">� Kasongo</div>
+      <div class="mini-desc">Reveal gems to multiply your bet. Hit Kasongo and lose it all.</div>
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
@@ -1579,9 +1579,18 @@ function renderMineGrid() {
   for (let i = 0; i < 16; i++) {
     const div = document.createElement('div');
     div.className = 'flip-card';
-    if (mineGrid[i] === 'gem') { div.className += ' safe'; div.textContent = '💎'; }
-    else if (mineGrid[i] === 'bomb') { div.className += ' bomb'; div.textContent = '💣'; }
-    else { div.textContent = '?'; if (mineActive) div.onclick = () => mineReveal(i); }
+    if (mineGrid[i] === 'gem') { 
+      div.className += ' safe'; 
+      div.textContent = '💎'; 
+    }
+    else if (mineGrid[i] === 'bomb') { 
+      div.className += ' bomb'; 
+      div.innerHTML = '<svg viewBox="0 0 100 100" style="width:60%;height:60%;fill:currentColor"><g><path d="M35 15 Q25 15 25 35 Q25 55 35 60 Q50 65 65 60 Q75 55 75 35 Q75 15 65 15 L35 15 M45 10 L55 5 L55 15 L45 15 L45 10"/></g></svg>'; 
+    }
+    else { 
+      div.textContent = '?'; 
+      if (mineActive) div.onclick = () => mineReveal(i); 
+    }
     el.appendChild(div);
   }
 }
