@@ -1711,7 +1711,7 @@ async function checkAndSettlePendingBets() {
     return;
   }
 
-  showToast(`Checking ${pendingBets.length} pending bet${pendingBets.length>1?'s'}...`);
+  showToast(`Checking ${pendingBets.length} pending bet${pendingBets.length>1?'s':''}...`);
 
   // Collect all unique game IDs from pending bets
   const gameIds = new Set();
@@ -1795,7 +1795,7 @@ async function checkAndSettlePendingBets() {
   }
 
   if (settled > 0) {
-    showToast(`✅ Settled ${settled} bet${settled>1?'s'}!`);
+    showToast(`✅ Settled ${settled} bet${settled>1?'s':''}!`);
     renderHistory();
     refreshBalance();
   } else {
