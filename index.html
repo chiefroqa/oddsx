@@ -217,7 +217,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   </div>
   <div class="tabs">
     <div class="tab active" onclick="showTab('sports')">⚽ Sports</div>
-    <div class="tab" onclick="showTab('crash')">📈 Crash</div>
+    <div class="tab" onclick="showTab('crash')">✈️ Pepea</div>
     <div class="tab" onclick="showTab('mines')">💣 Mines</div>
     <div class="tab" onclick="showTab('wallet')">💳 Wallet</div>
     <div class="tab" onclick="showTab('history')">📋 History</div>
@@ -608,12 +608,18 @@ function parseESPNEvent(ev, sport) {
 
   const homeScoreVal = home.score ?? null;
   const awayScoreVal = away.score ?? null;
+  // Pass win/loss records so odds reflect actual team strength
+  const homeRec = comp.competitors?.find(c=>c.homeAway==='home')?.records?.[0]?.summary || '';
+  const awayRec = comp.competitors?.find(c=>c.homeAway==='away')?.records?.[0]?.summary || '';
+
   const odds = generateOdds(
     home.team?.displayName, away.team?.displayName,
     homeScoreVal, awayScoreVal,
     status?.state === 'in',
     status?.shortDetail || '',
-    sport.isSoccer
+    sport.isSoccer,
+    homeRec,
+    awayRec
   );
 
   return {
@@ -656,75 +662,117 @@ function seededRand(str, offset = 0) {
   return ((h >>> 0) % 1000) / 1000;
 }
 
-function generateOdds(homeTeam = '', awayTeam = '', homeScore = null, awayScore = null, isLive = false, statusDetail = '', isSoccer = false) {
-  const seed = homeTeam + awayTeam;
+// ── ODDS ENGINE ──
+// Converts decimal odds to American format
+function decimalToAmerican(dec) {
+  dec = Math.max(1.01, dec);
+  if (dec >= 2.0) return '+' + Math.round((dec - 1) * 100);
+  return '-' + Math.round(100 / (dec - 1));
+}
 
-  // ── BASE PRE-MATCH PROBABILITIES ──
-  // Soccer: 3-way (home/draw/away). Basketball/NFL: 2-way only.
-  let homeProb, awayProb, drawProb = 0;
+// Converts win probability (0-1) to fair decimal odds, then applies overround
+function probToDecimal(prob, overround = 1.08) {
+  prob = Math.max(0.03, Math.min(0.97, prob));
+  const fair = 1 / prob;
+  // Apply overround — divide fair odds to build in house margin
+  return +(fair / overround).toFixed(2);
+}
 
-  if (isSoccer) {
-    // Soccer: home wins ~46-58%, draw ~20-28%, away gets rest
-    // Ensure they sum to 100 and neither team is impossibly low
-    drawProb = 20 + Math.round(seededRand(seed, 2) * 8); // 20-28%
-    homeProb = 38 + Math.round(seededRand(seed, 1) * 20); // 38-58%
-    awayProb = 100 - homeProb - drawProb;
-    // Ensure away team has at least 15%
-    if (awayProb < 15) { homeProb -= (15 - awayProb); awayProb = 15; }
-  } else {
-    // Basketball/NFL: no draw. Home wins 52-65% (home court/field advantage)
-    drawProb = 0;
-    homeProb = 52 + Math.round(seededRand(seed, 1) * 13); // 52-65%
-    awayProb = 100 - homeProb; // 35-48%
+function generateOdds(homeTeam = '', awayTeam = '', homeScore = null, awayScore = null,
+                      isLive = false, statusDetail = '', isSoccer = false,
+                      homeRecord = '', awayRecord = '') {
+
+  // ── STEP 1: Base probability from actual win records ──
+  // ESPN gives us records like "56-26" — we use these to derive real team strength
+  let homeWinRate = 0.52; // default home advantage
+  let awayWinRate = 0.48;
+
+  const parseRecord = (rec) => {
+    if (!rec) return null;
+    const parts = rec.split('-').map(Number);
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      const total = parts[0] + parts[1];
+      return total > 0 ? parts[0] / total : null;
+    }
+    return null;
+  };
+
+  const hRate = parseRecord(homeRecord);
+  const aRate = parseRecord(awayRecord);
+
+  if (hRate !== null && aRate !== null) {
+    // Both teams have records — use them with home advantage factor
+    const homeAdj = hRate * 1.08; // ~8% home court/field boost
+    const awayAdj = aRate * 0.95; // slight away penalty
+    const total = homeAdj + awayAdj;
+    homeWinRate = homeAdj / total;
+    awayWinRate = awayAdj / total;
+  } else if (hRate !== null) {
+    homeWinRate = Math.min(0.82, hRate * 1.05);
+    awayWinRate = 1 - homeWinRate;
+  } else if (aRate !== null) {
+    awayWinRate = Math.min(0.78, aRate * 0.95);
+    homeWinRate = 1 - awayWinRate;
   }
 
-  // ── IN-PLAY ODDS: shift based on score and time ──
+  // ── STEP 2: Soccer draw probability ──
+  // Draw more likely when teams are close in strength
+  let drawProb = 0;
+  if (isSoccer) {
+    const strengthDiff = Math.abs(homeWinRate - awayWinRate);
+    // When teams are evenly matched, draw ~30%. When lopsided, draw ~15%
+    drawProb = Math.max(0.13, 0.30 - strengthDiff * 0.5);
+    // Redistribute home/away to make room for draw
+    homeWinRate = homeWinRate * (1 - drawProb);
+    awayWinRate = awayWinRate * (1 - drawProb);
+  }
+
+  // ── STEP 3: In-play adjustment ──
   if (isLive && homeScore !== null && awayScore !== null) {
     const hS = parseInt(homeScore) || 0;
     const aS = parseInt(awayScore) || 0;
     const diff = hS - aS;
 
-    // Parse minutes from e.g. "45'" "67:23" "Q3 8:45"
-    let minutesPlayed = 45;
-    const minMatch = statusDetail.match(/(\d+):/);
-    const minMatch2 = statusDetail.match(/(\d+)'/);
-    if (minMatch) minutesPlayed = parseInt(minMatch[1]);
-    else if (minMatch2) minutesPlayed = parseInt(minMatch2[1]);
-    const maxTime = isSoccer ? 90 : 48; // 90min soccer, 48min basketball
-    const timeWeight = Math.min(minutesPlayed / maxTime, 1);
-
-    // Score shift — each goal/basket difference moves odds
-    const shiftPerGoal = isSoccer ? 18 : 8; // goals matter more in soccer
-    const scoreShift = diff * shiftPerGoal * timeWeight;
-    homeProb = Math.max(3, Math.min(94, homeProb + scoreShift));
-    awayProb = Math.max(3, Math.min(94, awayProb - scoreShift));
-
-    if (isSoccer && Math.abs(diff) > 0) {
-      // Draw collapses as lead grows and time runs out
-      drawProb = Math.max(2, drawProb * (1 - timeWeight * 0.85));
+    let timeWeight = 0.5;
+    const minMatch = statusDetail.match(/(\d+)[:'"]/);
+    if (minMatch) {
+      const mins = parseInt(minMatch[1]);
+      const maxTime = isSoccer ? 90 : 48;
+      timeWeight = Math.min(mins / maxTime, 1);
     }
 
-    // Re-normalize to 100%
-    const total = homeProb + awayProb + drawProb;
-    homeProb = Math.round(homeProb / total * 100);
-    awayProb = Math.round(awayProb / total * 100);
-    drawProb = isSoccer ? Math.max(0, 100 - homeProb - awayProb) : 0;
+    // Each goal/basket in difference shifts probability
+    const shiftPerUnit = isSoccer ? 0.18 : 0.07;
+    const shift = diff * shiftPerUnit * timeWeight;
+    homeWinRate = Math.max(0.03, Math.min(0.94, homeWinRate + shift));
+    awayWinRate = Math.max(0.03, Math.min(0.94, awayWinRate - shift));
+
+    if (isSoccer && Math.abs(diff) > 0) {
+      drawProb = Math.max(0.02, drawProb * (1 - timeWeight * 0.85));
+      // Renormalize
+      const tot = homeWinRate + awayWinRate + drawProb;
+      homeWinRate /= tot; awayWinRate /= tot; drawProb /= tot;
+    }
   }
 
-  // Apply bookmaker overround (house margin ~8%)
-  // This ensures the book always profits regardless of outcome
-  const overround = 1.08;
-  const homeProbAdj = homeProb / overround;
-  const awayProbAdj = awayProb / overround;
-  const drawProbAdj = drawProb / overround;
+  // ── STEP 4: Build decimal odds with 8% overround ──
+  const OVERROUND = 1.08;
+  const homeDecimal = probToDecimal(homeWinRate, OVERROUND);
+  const awayDecimal = probToDecimal(awayWinRate, OVERROUND);
+  const drawDecimal = isSoccer ? probToDecimal(drawProb, OVERROUND) : null;
 
   return {
-    homeProb: Math.round(homeProb),
-    awayProb: Math.round(awayProb),
-    drawProb: Math.round(drawProb),
-    homeOdds: probToAmericanOdds(homeProbAdj),
-    awayOdds: probToAmericanOdds(awayProbAdj),
-    drawOdds: isSoccer ? probToAmericanOdds(drawProbAdj) : '+999',
+    homeProb: Math.round(homeWinRate * 100),
+    awayProb: Math.round(awayWinRate * 100),
+    drawProb: Math.round(drawProb * 100),
+    // Decimal odds (SportPesa style)
+    homeDecimal,
+    awayDecimal,
+    drawDecimal,
+    // American odds for display
+    homeOdds: decimalToAmerican(homeDecimal),
+    awayOdds: decimalToAmerican(awayDecimal),
+    drawOdds: isSoccer ? decimalToAmerican(drawDecimal) : null,
   };
 }
 
@@ -881,20 +929,20 @@ function renderSports() {
       </div>
       ${liveOddsNote}
       <div class="odds-row" style="${!canBet?'pointer-events:none;opacity:0.5':''}">
-        <div class="odd-btn ${sel?.type==='away'?'selected':''}" ${oddsClick('away', g.awayTeam+' Win', g.awayOdds)}>
+        <div class="odd-btn ${sel?.type==='away'?'selected':''}" ${oddsClick('away', g.awayTeam+' Win', g.awayDecimal)}>
           <div class="odd-label">${g.awayAbbr} Win</div>
-          <div class="odd-val">${g.awayOdds}</div>
+          <div class="odd-val">${g.awayDecimal}</div>
           <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.awayTeam}</div>
         </div>
         ${g.isSoccer ? `
-        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" ${oddsClick('draw', g.awayTeam+' vs '+g.homeTeam+' Draw', g.drawOdds)}>
+        <div class="odd-btn ${sel?.type==='draw'?'selected':''}" ${oddsClick('draw', g.awayTeam+' vs '+g.homeTeam+' Draw', g.drawDecimal)}>
           <div class="odd-label">Draw</div>
-          <div class="odd-val">${g.drawOdds}</div>
+          <div class="odd-val">${g.drawDecimal}</div>
           <div class="odd-team" style="font-size:9px">X</div>
         </div>` : ''}
-        <div class="odd-btn ${sel?.type==='home'?'selected':''}" ${oddsClick('home', g.homeTeam+' Win', g.homeOdds)}>
+        <div class="odd-btn ${sel?.type==='home'?'selected':''}" ${oddsClick('home', g.homeTeam+' Win', g.homeDecimal)}>
           <div class="odd-label">${g.homeAbbr} Win</div>
-          <div class="odd-val">${g.homeOdds}</div>
+          <div class="odd-val">${g.homeDecimal}</div>
           <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.homeTeam}</div>
         </div>
       </div>
@@ -915,10 +963,13 @@ function selectOdd(gameId, type, label, odds) {
 }
 
 function oddsToDecimal(o) {
-  o = o.trim();
+  // Odds are now stored as decimal (e.g. 2.45, 1.78, 3.60)
+  // Keep American fallback for any legacy data
+  if (typeof o === 'number') return o;
+  o = String(o).trim();
   if (o.startsWith('+')) return 1 + parseInt(o.slice(1)) / 100;
   if (o.startsWith('-')) return 1 + 100 / Math.abs(parseInt(o.slice(1)));
-  return parseFloat(o);
+  return parseFloat(o) || 1;
 }
 
 function calcReturn() {
@@ -963,7 +1014,7 @@ async function placeBet() {
   bets.forEach(b => watchForResult(b.gameId, b.type));
 }
 
-// ─── CRASH ───
+// ─── PEPEA ───
 // ─── AUTO BET SETTLEMENT ───
 // Polls every 60s — when a game finishes, determines winner from ESPN
 // score and auto-credits payout. No admin needed.
@@ -1004,11 +1055,32 @@ async function settleBetFromResult(bet, game) {
       `Bet won — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
     showToast(`🎉 Bet WON! +KSH ${(payout - bet.stake).toLocaleString()} credited!`);
   } else {
+    // Write a settled transaction so it appears in wallet history too
+    await sb.from('transactions').insert({
+      user_id: currentUser.id,
+      type: 'bet_loss',
+      amount: bet.stake,
+      label: `Bet lost — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`,
+      balance_after: userBalance
+    });
     showToast(`😔 Bet settled — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
   }
 
   placedGameIds.delete(game.id);
   renderSports();
+
+  // Refresh history tab if it's currently open
+  const histTab = document.getElementById('tab-history');
+  if (histTab && histTab.style.display !== 'none') {
+    renderHistory();
+  }
+
+  // Also show a persistent notification banner on the history tab badge
+  const histNav = document.querySelector('[onclick="showTab('history')"]');
+  if (histNav && won) {
+    histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
+    setTimeout(() => { if(histNav) histNav.textContent = '📋 History'; }, 10000);
+  }
 }
 
 // Load user's pending bets on login and start watching for results
@@ -1034,8 +1106,8 @@ function renderCrash() {
   el.innerHTML = `
     <div class="mini-game" style="padding:0;overflow:hidden;border-radius:10px">
       <div style="padding:14px 14px 0">
-        <div class="mini-title">📈 Crash</div>
-        <div class="mini-desc">Cash out before the rocket crashes! The longer you wait, the bigger the multiplier.</div>
+        <div class="mini-title">✈️ Pepea</div>
+        <div class="mini-desc">Cash out before it crashes! The longer you wait, the bigger the multiplier. — Pepea</div>
       </div>
 
       <!-- CANVAS ANIMATION AREA -->
@@ -1219,17 +1291,16 @@ async function crashStart() {
 
   crashState = 'running';
   crashMult = 1.0;
-  // Realistic crash distribution with 5% house edge
-  // Formula: crash = 1 / uniform(0,1) capped at 100x
-  // This gives: ~50% chance crash < 2x, ~25% < 1.5x, ~10% > 10x
-  const houseEdge = 0.05;
+  // Aviator-style crash distribution — same formula used by Spribe/Aviator
+  // House edge: 1% of rounds crash at exactly 1.00x (instant)
+  // Other rounds: crash = 99 / (100 * rand) — gives realistic distribution:
+  //   ~35% crash below 1.5x, ~52% below 2x, ~18% above 5x, ~8% above 10x
   const r = Math.random();
-  if (r < houseEdge) {
-    crashTarget = 1.00; // instant crash — house wins 5% of rounds
+  if (r < 0.01) {
+    crashTarget = 1.00; // 1% house edge rounds
   } else {
-    crashTarget = Math.min(100, 0.99 / (r - houseEdge + 0.001));
+    crashTarget = Math.max(1.01, Math.min(1000, +(99 / (100 * r)).toFixed(2)));
   }
-  crashTarget = Math.max(1.00, +crashTarget.toFixed(2));
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
   if (cashBtn) { cashBtn.style.display = 'inline-block'; }
@@ -1262,7 +1333,7 @@ async function crashStart() {
       clearInterval(crashInterval);
       crashState = 'crashed';
 
-      m.textContent = 'CRASHED ' + crashMult.toFixed(2) + 'x';
+      m.textContent = 'PEPEAED ' + crashMult.toFixed(2) + 'x';
       m.style.color = '#ff6b35';
       m.style.textShadow = '0 0 40px rgba(255,107,53,0.8)';
       drawCrashCanvas(true);
@@ -1321,7 +1392,15 @@ function renderMines() {
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
         <input class="crash-input" type="number" id="m-stake" value="300" min="50" ${mineActive?'disabled':''}>
-        <button class="${mineActive?'red-btn':'green-btn'}" id="m-start" onclick="${mineActive?'mineCash()':'mineStart()'}">${mineActive?`Cash Out ${mineMult.toFixed(2)}x`:'Start Game'}</button>
+        <button class="${mineActive?'red-btn':'green-btn'}" id="m-start"
+          ${mineActive && mineRevealed < 3 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}
+          onclick="${mineActive?'mineCash()':'mineStart()}">
+          ${mineActive
+            ? (mineRevealed < 3
+                ? `Reveal ${3-mineRevealed} more to unlock (${mineMult.toFixed(2)}x)`
+                : `💰 Cash Out ${mineMult.toFixed(2)}x`)
+            : 'Start Game'}
+        </button>
         <span id="m-msg"></span>
       </div>
     </div>`;
@@ -1370,6 +1449,7 @@ async function mineReveal(i) {
 
 async function mineCash() {
   if (!mineActive) return;
+  if (mineRevealed < 3) return showToast('Reveal at least 3 gems before cashing out!');
   mineActive = false;
   const win = Math.round(mineStake * mineMult);
   await updateBalance(userBalance + win, 'bet_win', mineStake, `Mines cashed out at ${mineMult.toFixed(2)}x`);
@@ -1413,24 +1493,78 @@ async function renderWallet() {
 // ─── BET HISTORY ───
 async function renderHistory() {
   const el = document.getElementById('tab-history');
-  el.innerHTML = `<div class="section-label">Your Bets</div><div id="bet-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div></div>`;
-  const { data: bets } = await sb.from('bets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(30);
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="section-label">Your Bets</div>
+      <button onclick="renderHistory()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:12px 0 8px">🔄 Refresh</button>
+    </div>
+    <div id="bet-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
+
+  const { data: bets, error } = await sb.from('bets')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
   const betEl = document.getElementById('bet-list');
-  if (!bets?.length) { betEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No bets placed yet</div>`; return; }
-  betEl.innerHTML = bets.map(b => {
-    const legs = b.selections?.map(s => s.label).join(' + ') || 'Bet';
-    return `<div class="tx-item" style="flex-direction:column;align-items:flex-start;gap:6px">
-      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-        <div style="font-size:13px;font-weight:600">${legs}</div>
-        <span class="bet-status ${b.status}">${b.status}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;width:100%;font-size:12px;color:var(--muted)">
-        <span>Stake: KSH ${b.stake?.toLocaleString()} · Odds: ${b.odds_total}x</span>
-        <span class="${b.status==='won'?'tx-amount credit':'tx-amount debit'}">${b.status==='won'?'+KSH '+(b.payout-b.stake)?.toLocaleString():'-KSH '+b.stake?.toLocaleString()}</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted)">${new Date(b.created_at).toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+  if (!betEl) return;
+
+  if (error || !bets?.length) {
+    betEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
+      <div style="font-size:28px;margin-bottom:8px">🎫</div>
+      No bets placed yet
     </div>`;
-  }).join('');
+    return;
+  }
+
+  // Summary stats
+  const totalStaked = bets.reduce((s,b) => s + (b.stake||0), 0);
+  const totalWon = bets.filter(b=>b.status==='won').reduce((s,b) => s + ((b.payout||0)-(b.stake||0)), 0);
+  const pending = bets.filter(b=>b.status==='pending').length;
+
+  betEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">TOTAL STAKED</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">KSH ${totalStaked.toLocaleString()}</div>
+      </div>
+      <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">NET PROFIT</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${totalWon>=0?'var(--accent)':'var(--accent2)'}">${totalWon>=0?'+':''}KSH ${totalWon.toLocaleString()}</div>
+      </div>
+      <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">PENDING</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--gold)">${pending}</div>
+      </div>
+    </div>
+
+    ${bets.map(b => {
+      const legs = b.selections?.map(s => s.label).join(' · ') || 'Bet';
+      const date = new Date(b.created_at).toLocaleDateString('en-KE', {
+        weekday:'short', day:'numeric', month:'short',
+        hour:'2-digit', minute:'2-digit'
+      });
+      const profit = b.status==='won' ? (b.payout||0)-(b.stake||0) : -(b.stake||0);
+      const isPending = b.status === 'pending';
+      const isWon = b.status === 'won';
+
+      return `<div style="background:var(--g2);border:1px solid ${isWon?'rgba(0,229,160,0.2)':isPending?'rgba(255,201,71,0.15)':'rgba(255,255,255,0.05)'};border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div style="font-size:12px;font-weight:600;flex:1;margin-right:8px;line-height:1.4">${legs}</div>
+          <span class="bet-status ${b.status}" style="flex-shrink:0">${isPending?'⏳ Pending':isWon?'✅ Won':'❌ Lost'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:var(--muted)">
+            KSH ${b.stake?.toLocaleString()} stake · ${b.odds_total}x odds
+            ${isPending ? '<br><span style="color:var(--gold)">Potential: KSH ' + (b.potential_payout||0).toLocaleString() + '</span>' : ''}
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:${isWon?'var(--accent)':'var(--accent2)'}">
+            ${isWon?'+':''}KSH ${Math.abs(profit).toLocaleString()}
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:5px">${date}</div>
+      </div>`;
+    }).join('')}`;
 }
 
 // ─── DEPOSIT / WITHDRAW ───
