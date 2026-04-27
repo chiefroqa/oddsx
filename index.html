@@ -1214,6 +1214,51 @@ async function resumePendingBets() {
       }
     }
   }
+  
+  // Start periodic check for pending bets every 5 minutes to catch any missed settlements
+  if (!window.pendingBetsCheckInterval) {
+    window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000); // 5 minutes
+  }
+}
+
+// Periodic check to settle any pending bets that might have been missed
+async function checkPendingBetsForSettlement() {
+  try {
+    const { data: bets } = await sb.from('bets')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .eq('status', 'pending');
+    
+    if (!bets?.length) return;
+    
+    for (const bet of bets) {
+      if (!bet.selections) continue;
+      
+      for (const sel of bet.selections) {
+        if (sel.gameId) {
+          try {
+            // Fetch game data from ESPN
+            const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${sel.gameId}`).then(r => r.json()).catch(() => ({}));
+            
+            if (gameData.events && gameData.events.length > 0) {
+              const ev = gameData.events[0];
+              const status = ev.status?.type;
+              const isFinal = status?.state === 'post';
+              
+              // If game is finished and bet is still pending, settle it
+              if (isFinal) {
+                await settleBetFromResult(bet.id, bet.selections, ev);
+              }
+            }
+          } catch(e) {
+            console.error('Error checking pending bet:', e);
+          }
+        }
+      }
+    }
+  } catch(e) {
+    console.error('Error in pending bets check:', e);
+  }
 }
 
 function renderCrash() {
