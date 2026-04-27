@@ -1024,74 +1024,105 @@ async function placeBet() {
 
 // ─── PEPEA ───
 // ─── AUTO BET SETTLEMENT ───
-// Polls every 60s — when a game finishes, determines winner from ESPN
+// Polls every 30s — when a game finishes, determines winner from ESPN
 // score and auto-credits payout. No admin needed.
 async function watchForResult(gameId, betId, selectionType, allSelections) {
   const poll = setInterval(async () => {
-    const game = liveGames.find(g => g.id === gameId);
-    if (!game) return;
-    if (game.isFinal) {
-      clearInterval(poll);
-      await settleBetFromResult(betId, allSelections, game);
+    try {
+      // Fetch the game directly from ESPN to check its status
+      const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
+      
+      if (!gameData.events || !gameData.events.length) return;
+      
+      const ev = gameData.events[0];
+      const status = ev.status?.type;
+      const isFinal = status?.state === 'post';
+      
+      if (isFinal) {
+        clearInterval(poll);
+        await settleBetFromResult(betId, allSelections, ev);
+      }
+    } catch(e) {
+      console.error('Error checking game result:', e);
     }
-  }, 60000);
+  }, 30000); // Check every 30 seconds
 }
 
-async function settleBetFromResult(betId, allSelections, game) {
-  const homeScore = parseInt(game.homeScore) || 0;
-  const awayScore = parseInt(game.awayScore) || 0;
+async function settleBetFromResult(betId, allSelections, espnEvent) {
+  try {
+    // Extract game info from ESPN event
+    const comp = espnEvent.competitions?.[0];
+    if (!comp) return;
+    
+    const home = comp.competitors?.find(c => c.homeAway === 'home');
+    const away = comp.competitors?.find(c => c.homeAway === 'away');
+    if (!home || !away) return;
+    
+    const homeScore = home.score ?? 0;
+    const awayScore = away.score ?? 0;
 
-  let result = 'draw';
-  if (homeScore > awayScore) result = 'home';
-  else if (awayScore > homeScore) result = 'away';
+    let result = 'draw';
+    if (homeScore > awayScore) result = 'home';
+    else if (awayScore > homeScore) result = 'away';
 
-  // For accumulator — check ALL selections
-  // Any selection referencing this game gets evaluated; others pass by default
-  const allCorrect = allSelections.every(sel => {
-    if (sel.gameId !== game.id) return true; // leg for a different game
-    return sel.type === result;
-  });
-
-  // Get the current bet to find stake and potential payout
-  const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
-  if (!betData) return;
-
-  const won = allCorrect;
-  const payout = won ? betData.potential_payout : 0;
-
-  await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', betId);
-
-  if (won) {
-    const newBal = userBalance + payout;
-    await updateBalance(newBal, 'bet_win', payout,
-      `Bet won — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
-    showToast(`🎉 Bet WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
-  } else {
-    // Write a settled transaction so it appears in wallet history too
-    await sb.from('transactions').insert({
-      user_id: currentUser.id,
-      type: 'bet_loss',
-      amount: betData.stake,
-      label: `Bet lost — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`,
-      balance_after: userBalance
+    // For accumulator — check ALL selections
+    // Any selection referencing this game gets evaluated; others pass by default
+    const allCorrect = allSelections.every(sel => {
+      if (sel.gameId !== espnEvent.id) return true; // leg for a different game
+      return sel.type === result;
     });
-    showToast(`😔 Bet settled — ${game.awayTeam} ${awayScore}-${homeScore} ${game.homeTeam}`);
-  }
 
-  placedGameIds.delete(game.id);
-  renderSports();
+    // Get the current bet to find stake and potential payout
+    const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
+    if (!betData) return;
+    
+    // Don't re-settle if already settled
+    if (betData.status !== 'pending') return;
 
-  // Refresh history tab if it's currently open
-  const histTab = document.getElementById('tab-history');
-  if (histTab && histTab.style.display !== 'none') {
-    renderHistory();
-  }
+    const won = allCorrect;
+    const payout = won ? betData.potential_payout : 0;
 
-  // Also show a persistent notification banner on the history tab badge
-  const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
-  if (histNav && won) {
-    histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
-    setTimeout(() => { if(histNav) histNav.textContent = '📋 History'; }, 10000);
+    const { error: updateError } = await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', betId);
+    
+    if (updateError) {
+      console.error('Error updating bet:', updateError);
+      return;
+    }
+
+    if (won) {
+      const newBal = userBalance + payout;
+      await updateBalance(newBal, 'bet_win', payout,
+        `Bet won — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`);
+      showToast(`🎉 Bet WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
+    } else {
+      // Write a settled transaction so it appears in wallet history too
+      await sb.from('transactions').insert({
+        user_id: currentUser.id,
+        type: 'bet_loss',
+        amount: betData.stake,
+        label: `Bet lost — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`,
+        balance_after: userBalance
+      });
+      showToast(`😔 Bet settled — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`);
+    }
+
+    placedGameIds.delete(espnEvent.id);
+    renderSports();
+
+    // Refresh history tab if it's currently open
+    const histTab = document.getElementById('tab-history');
+    if (histTab && histTab.style.display !== 'none') {
+      renderHistory();
+    }
+
+    // Also show a persistent notification banner on the history tab badge
+    const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
+    if (histNav && won) {
+      histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
+      setTimeout(() => { if(histNav) histNav.textContent = '📋 History'; }, 10000);
+    }
+  } catch(e) {
+    console.error('Error settling bet:', e);
   }
 }
 
@@ -1102,17 +1133,39 @@ async function resumePendingBets() {
     .eq('user_id', currentUser.id)
     .eq('status', 'pending');
   if (!bets?.length) return;
+  
   // Restore placedGameIds so user can't double-bet
   // And watch each game for results to auto-settle the bet
-  bets.forEach(bet => {
-    bet.selections?.forEach(sel => {
+  for (const bet of bets) {
+    if (!bet.selections) continue;
+    
+    for (const sel of bet.selections) {
       if (sel.gameId) {
         placedGameIds.add(sel.gameId);
-        // Pass the bet ID and all selections so we can update the correct bet when game ends
+        
+        // Check if game is already finished (in case app was offline)
+        try {
+          const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${sel.gameId}`).then(r => r.json()).catch(() => ({}));
+          if (gameData.events && gameData.events.length > 0) {
+            const ev = gameData.events[0];
+            const status = ev.status?.type;
+            const isFinal = status?.state === 'post';
+            
+            // If game is already finished, settle immediately
+            if (isFinal) {
+              await settleBetFromResult(bet.id, bet.selections, ev);
+              continue;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking game status:', e);
+        }
+        
+        // Otherwise watch for future results
         watchForResult(sel.gameId, bet.id, sel.type, bet.selections);
       }
-    });
-  });
+    }
+  }
 }
 
 function renderCrash() {
