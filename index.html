@@ -1076,7 +1076,7 @@ async function settleBetFromResult(bet, game) {
   }
 
   // Also show a persistent notification banner on the history tab badge
-  const histNav = document.querySelector('[onclick="showTab('history')"]');
+  const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
   if (histNav && won) {
     histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
     setTimeout(() => { if(histNav) histNav.textContent = '📋 History'; }, 10000);
@@ -1384,6 +1384,15 @@ async function crashCash() {
 // ─── MINES ───
 function renderMines() {
   const el = document.getElementById('tab-mines');
+  const gameButtonText = mineActive
+    ? (mineRevealed < 3
+        ? `Reveal ${3-mineRevealed} more to unlock (${mineMult.toFixed(2)}x)`
+        : `💰 Cash Out ${mineMult.toFixed(2)}x`)
+    : 'Start Game';
+  const gameButtonClick = mineActive ? 'mineCash()' : 'mineStart()';
+  const gameButtonDisabled = (mineActive && mineRevealed < 3) ? 'disabled style="opacity:0.5;cursor:not-allowed"' : '';
+  const gameButtonClass = mineActive ? 'red-btn' : 'green-btn';
+  
   el.innerHTML = `
     <div class="mini-game">
       <div class="mini-title">💣 Mines</div>
@@ -1392,14 +1401,10 @@ function renderMines() {
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
         <input class="crash-input" type="number" id="m-stake" value="300" min="50" ${mineActive?'disabled':''}>
-        <button class="${mineActive?'red-btn':'green-btn'}" id="m-start"
-          ${mineActive && mineRevealed < 3 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}
-          onclick="${mineActive?'mineCash()':'mineStart()}">
-          ${mineActive
-            ? (mineRevealed < 3
-                ? `Reveal ${3-mineRevealed} more to unlock (${mineMult.toFixed(2)}x)`
-                : `💰 Cash Out ${mineMult.toFixed(2)}x`)
-            : 'Start Game'}
+        <button class="${gameButtonClass}" id="m-start"
+          ${gameButtonDisabled}
+          onclick="${gameButtonClick}">
+          ${gameButtonText}
         </button>
         <span id="m-msg"></span>
       </div>
