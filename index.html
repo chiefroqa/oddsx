@@ -1087,7 +1087,7 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
     } catch(e) {
       console.error('Error checking game result:', e);
     }
-  }, 60000); // Check every 60 seconds
+  }, 30000); // Check every 30 seconds (was 60)
   
   activeGamePolls[gameId] = poll;
 }
