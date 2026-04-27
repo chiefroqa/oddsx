@@ -505,7 +505,7 @@ function showTab(t) {
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
-  if (t==='history') renderHistory();
+  if (t==='history') { renderHistory(); checkAndSettlePendingBets(); }
 }
 
 // ─── TOAST ───
@@ -555,15 +555,25 @@ const SPORTS = [
 // ─── ESPN API FETCH ───
 // Fetches today + next 6 days across all league slugs for the sport in parallel.
 // Soccer fetches EPL, FA Cup, UCL, La Liga, Serie A etc all at once and merges.
-async function fetchESPN(leagues) {
+// Cache ESPN results to avoid re-fetching on every tab switch
+const espnCache = {};
+const CACHE_TTL = 60000; // 60 seconds
+
+async function fetchESPN(leagues, sportId) {
+  const cacheKey = sportId || leagues.join(',');
+  const cached = espnCache[cacheKey];
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return cached.data;
+  }
+
+  // Yesterday + today + next 2 days (4 days total instead of 7 — much faster)
   const dates = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = -1; i <= 2; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
 
-  // league x date — all in parallel
   const fetches = [];
   for (const league of leagues) {
     for (const dateStr of dates) {
@@ -585,10 +595,11 @@ async function fetchESPN(leagues) {
     }
   }
 
-  // Sort by date ascending so live games first, then upcoming
   allEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+  espnCache[cacheKey] = { data: allEvents, ts: Date.now() };
   return allEvents;
 }
+
 
 
 function parseESPNEvent(ev, sport) {
@@ -830,7 +841,7 @@ async function loadSport(id) {
     <div style="font-size:12px;color:var(--muted)">Fetching live & upcoming games from ESPN...</div>
   </div>`;
 
-  const rawEvents = await fetchESPN(sport.leagues);
+  const rawEvents = await fetchESPN(sport.leagues, sport.id);
   liveGames = rawEvents.map(ev => parseESPNEvent(ev, sport)).filter(Boolean);
 
   if (!liveGames.length) {
@@ -1686,6 +1697,112 @@ async function mineCash() {
 }
 
 // ─── WALLET ───
+// ── CLIENT-SIDE PENDING BET CHECKER ──
+// Fallback for bets stuck as pending — fetches ESPN results directly
+// Called by user via "Settle Pending" button or on every history open
+async function checkAndSettlePendingBets() {
+  const { data: pendingBets } = await sb.from('bets')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .eq('status', 'pending');
+
+  if (!pendingBets?.length) {
+    showToast('No pending bets to settle');
+    return;
+  }
+
+  showToast(`Checking ${pendingBets.length} pending bet${pendingBets.length>1?'s':''}...`);
+
+  // Collect all unique game IDs from pending bets
+  const gameIds = new Set();
+  pendingBets.forEach(b => b.selections?.forEach(s => { if(s.gameId) gameIds.add(s.gameId); }));
+
+  // Fetch recent ESPN results (yesterday + today)
+  const dates = [];
+  for (let i = -2; i <= 0; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
+  }
+
+  const LEAGUES = [
+    'soccer/eng.1','soccer/eng.fa','soccer/esp.1','soccer/ita.1',
+    'soccer/ger.1','soccer/fra.1','soccer/uefa.champions','soccer/uefa.europa',
+    'soccer/uefa.europaconf','basketball/nba','baseball/mlb','hockey/nhl',
+  ];
+
+  const fetches = [];
+  for (const league of LEAGUES) {
+    for (const date of dates) {
+      fetches.push(fetch(`https://site.api.espn.com/apis/site/v2/sports/${league}/scoreboard?dates=${date}&limit=100`).then(r=>r.json()).catch(()=>({})));
+    }
+  }
+
+  const responses = await Promise.all(fetches);
+  const finishedGames = new Map();
+
+  for (const data of responses) {
+    for (const ev of (data.events || [])) {
+      const status = ev.status?.type;
+      if (status?.completed || status?.state === 'post') {
+        const comp = ev.competitions?.[0];
+        const home = comp?.competitors?.find(c=>c.homeAway==='home');
+        const away = comp?.competitors?.find(c=>c.homeAway==='away');
+        if (home && away) {
+          finishedGames.set(ev.id, {
+            homeScore: parseInt(home.score)||0,
+            awayScore: parseInt(away.score)||0,
+            homeTeam: home.team?.displayName,
+            awayTeam: away.team?.displayName,
+          });
+        }
+      }
+    }
+  }
+
+  let settled = 0;
+  for (const bet of pendingBets) {
+    const selections = bet.selections || [];
+    let allDone = true, allCorrect = true;
+
+    for (const sel of selections) {
+      const game = finishedGames.get(sel.gameId);
+      if (!game) { allDone = false; break; }
+      const hS = game.homeScore, aS = game.awayScore;
+      const result = hS > aS ? 'home' : aS > hS ? 'away' : 'draw';
+      if (sel.type !== result) allCorrect = false;
+    }
+
+    if (!allDone) continue; // game not finished yet
+
+    const outcome = allCorrect ? 'won' : 'lost';
+    const payout = outcome === 'won' ? bet.potential_payout : 0;
+
+    await sb.from('bets').update({ status: outcome, payout }).eq('id', bet.id);
+
+    if (outcome === 'won') {
+      const newBal = userBalance + payout;
+      await updateBalance(newBal, 'bet_win', payout,
+        'Bet won — ' + selections.map(s=>s.label).join(' + '));
+      showToast('🎉 Bet WON! +KSH ' + (payout - bet.stake).toLocaleString());
+    } else {
+      await sb.from('transactions').insert({
+        user_id: currentUser.id, type: 'bet_loss', amount: bet.stake,
+        label: 'Bet lost — ' + selections.map(s=>s.label).join(' + '),
+        balance_after: userBalance
+      });
+    }
+    settled++;
+  }
+
+  if (settled > 0) {
+    showToast(`✅ Settled ${settled} bet${settled>1?'s':''}!`);
+    renderHistory();
+    refreshBalance();
+  } else {
+    showToast('No finished games found for pending bets yet');
+  }
+}
+
 async function renderWallet() {
   await refreshBalance();
   const el = document.getElementById('tab-wallet');
