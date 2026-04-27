@@ -329,6 +329,26 @@ let currentSport = 'soccer';
 let placedGameIds = new Set(); // games user has already bet on
 let refreshTimer = null;
 
+// ─── CACHING ───
+let gameStatusCache = {}; // gameId -> { status, timestamp }
+let transactionCache = null;
+let transactionCacheTime = 0;
+let betHistoryCache = null;
+let betHistoryCacheTime = 0;
+const CACHE_DURATION = 30000; // 30 seconds
+
+function getCachedGameStatus(gameId) {
+  const cached = gameStatusCache[gameId];
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.status;
+  }
+  return null;
+}
+
+function setCachedGameStatus(gameId, status) {
+  gameStatusCache[gameId] = { status, timestamp: Date.now() };
+}
+
 // ─── AUTH & CORE ───
 async function withTimeout(promise, ms = 10000) {
   const timeout = new Promise((_, reject) =>
@@ -1016,6 +1036,8 @@ async function placeBet() {
   document.getElementById('betslip').style.display = 'none';
   document.getElementById('slip-cnt').textContent = '0';
   btn.disabled = false; btn.textContent = 'Place Bet';
+  // Clear bet history cache to show new bet
+  betHistoryCache = null;
   renderSports();
   showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
   // Start watching for result — pass bet ID so we can update the correct bet record
@@ -1024,11 +1046,29 @@ async function placeBet() {
 
 // ─── PEPEA ───
 // ─── AUTO BET SETTLEMENT ───
-// Polls every 30s — when a game finishes, determines winner from ESPN
+// Polls every 60s — when a game finishes, determines winner from ESPN
 // score and auto-credits payout. No admin needed.
+let activeGamePolls = {}; // gameId -> intervalId
+
 async function watchForResult(gameId, betId, selectionType, allSelections) {
+  // Don't create multiple polls for same game
+  if (activeGamePolls[gameId]) return;
+  
   const poll = setInterval(async () => {
     try {
+      // Check cache first
+      const cachedStatus = getCachedGameStatus(gameId);
+      if (cachedStatus === 'final') {
+        clearInterval(poll);
+        delete activeGamePolls[gameId];
+        // Fetch fresh data to settle
+        const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
+        if (gameData.events && gameData.events.length > 0) {
+          await settleBetFromResult(betId, allSelections, gameData.events[0]);
+        }
+        return;
+      }
+      
       // Fetch the game directly from ESPN to check its status
       const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
       
@@ -1039,13 +1079,17 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
       const isFinal = status?.state === 'post';
       
       if (isFinal) {
+        setCachedGameStatus(gameId, 'final');
         clearInterval(poll);
+        delete activeGamePolls[gameId];
         await settleBetFromResult(betId, allSelections, ev);
       }
     } catch(e) {
       console.error('Error checking game result:', e);
     }
-  }, 30000); // Check every 30 seconds
+  }, 60000); // Check every 60 seconds
+  
+  activeGamePolls[gameId] = poll;
 }
 
 async function settleBetFromResult(betId, allSelections, espnEvent) {
@@ -1108,6 +1152,10 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
 
     placedGameIds.delete(espnEvent.id);
     renderSports();
+    
+    // Clear caches to refresh history and wallet
+    betHistoryCache = null;
+    transactionCache = null;
 
     // Refresh history tab if it's currently open
     const histTab = document.getElementById('tab-history');
@@ -1544,9 +1592,25 @@ async function renderWallet() {
     </div>
     <div class="section-label">Recent Transactions</div>
     <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div></div>`;
-  const { data: txs } = await sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(20);
+  
   const txEl = document.getElementById('tx-list');
-  if (!txs?.length) { txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No transactions yet</div>`; return; }
+  
+  // Use cache if available and recent
+  let txs = null;
+  if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
+    txs = transactionCache;
+  } else {
+    const { data } = await sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(20);
+    txs = data || [];
+    transactionCache = txs;
+    transactionCacheTime = Date.now();
+  }
+  
+  if (!txs?.length) { 
+    txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No transactions yet</div>`; 
+    return; 
+  }
+  
   txEl.innerHTML = txs.map(tx => {
     const isCredit = tx.type === 'deposit' || tx.type === 'bet_win';
     const sign = isCredit ? '+' : '-';
@@ -1568,20 +1632,29 @@ async function renderHistory() {
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div class="section-label">Your Bets</div>
-      <button onclick="renderHistory()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:12px 0 8px">🔄 Refresh</button>
+      <button onclick="betHistoryCache=null;renderHistory()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:12px 0 8px">🔄 Refresh</button>
     </div>
     <div id="bet-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
-
-  const { data: bets, error } = await sb.from('bets')
-    .select('*')
-    .eq('user_id', currentUser.id)
-    .order('created_at', { ascending: false })
-    .limit(50);
 
   const betEl = document.getElementById('bet-list');
   if (!betEl) return;
 
-  if (error || !bets?.length) {
+  // Use cache if available and recent, but always allow manual refresh
+  let bets = null;
+  if (betHistoryCache && Date.now() - betHistoryCacheTime < CACHE_DURATION) {
+    bets = betHistoryCache;
+  } else {
+    const { data } = await sb.from('bets')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    bets = data || [];
+    betHistoryCache = bets;
+    betHistoryCacheTime = Date.now();
+  }
+
+  if (!bets?.length) {
     betEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
       <div style="font-size:28px;margin-bottom:8px">🎫</div>
       No bets placed yet
