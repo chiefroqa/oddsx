@@ -1094,28 +1094,6 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
 
 async function settleBetFromResult(betId, allSelections, espnEvent) {
   try {
-    // Extract game info from ESPN event
-    const comp = espnEvent.competitions?.[0];
-    if (!comp) return;
-    
-    const home = comp.competitors?.find(c => c.homeAway === 'home');
-    const away = comp.competitors?.find(c => c.homeAway === 'away');
-    if (!home || !away) return;
-    
-    const homeScore = home.score ?? 0;
-    const awayScore = away.score ?? 0;
-
-    let result = 'draw';
-    if (homeScore > awayScore) result = 'home';
-    else if (awayScore > homeScore) result = 'away';
-
-    // For accumulator — check ALL selections
-    // Any selection referencing this game gets evaluated; others pass by default
-    const allCorrect = allSelections.every(sel => {
-      if (sel.gameId !== espnEvent.id) return true; // leg for a different game
-      return sel.type === result;
-    });
-
     // Get the current bet to find stake and potential payout
     const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
     if (!betData) return;
@@ -1123,9 +1101,75 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
     // Don't re-settle if already settled
     if (betData.status !== 'pending') return;
 
+    // For accumulator — need to fetch ALL games to check if they're all finished
+    const gameIds = allSelections.map(s => s.gameId).filter(Boolean);
+    if (!gameIds.length) return;
+
+    // Fetch all games to check their statuses
+    const gameResults = {};
+    let allFinished = true;
+    
+    for (const gameId of gameIds) {
+      try {
+        const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
+        
+        if (!gameData.events || !gameData.events.length) {
+          allFinished = false;
+          continue;
+        }
+        
+        const ev = gameData.events[0];
+        const status = ev.status?.type;
+        const isFinal = status?.state === 'post';
+        
+        if (!isFinal) {
+          allFinished = false;
+          continue;
+        }
+        
+        // Game is finished — extract result
+        const comp = ev.competitions?.[0];
+        if (!comp) continue;
+        
+        const home = comp.competitors?.find(c => c.homeAway === 'home');
+        const away = comp.competitors?.find(c => c.homeAway === 'away');
+        if (!home || !away) continue;
+        
+        const homeScore = home.score ?? 0;
+        const awayScore = away.score ?? 0;
+        
+        let result = 'draw';
+        if (homeScore > awayScore) result = 'home';
+        else if (awayScore > homeScore) result = 'away';
+        
+        gameResults[gameId] = {
+          result,
+          homeTeam: home.team?.displayName || 'Home',
+          awayTeam: away.team?.displayName || 'Away',
+          homeScore,
+          awayScore,
+          ev
+        };
+      } catch(e) {
+        console.error('Error fetching game result:', e);
+        allFinished = false;
+      }
+    }
+
+    // If not all games are finished yet, don't settle
+    if (!allFinished) return;
+
+    // All games finished — now evaluate the accumulator
+    const allCorrect = allSelections.every(sel => {
+      const gameResult = gameResults[sel.gameId];
+      if (!gameResult) return false; // Game data not found
+      return sel.type === gameResult.result;
+    });
+
     const won = allCorrect;
     const payout = won ? betData.potential_payout : 0;
 
+    // Update bet status in database
     const { error: updateError } = await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', betId);
     
     if (updateError) {
@@ -1133,21 +1177,25 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
       return;
     }
 
+    // Get first game result for display
+    const firstGameId = gameIds[0];
+    const firstResult = gameResults[firstGameId];
+
     if (won) {
       const newBal = userBalance + payout;
       await updateBalance(newBal, 'bet_win', payout,
-        `Bet won — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`);
-      showToast(`🎉 Bet WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
+        `${allSelections.length}-leg accumulator won`);
+      showToast(`🎉 Accumulator WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
     } else {
       // Write a settled transaction so it appears in wallet history too
       await sb.from('transactions').insert({
         user_id: currentUser.id,
         type: 'bet_loss',
         amount: betData.stake,
-        label: `Bet lost — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`,
+        label: `${allSelections.length}-leg accumulator lost`,
         balance_after: userBalance
       });
-      showToast(`😔 Bet settled — ${away.team?.displayName || 'Away'} ${awayScore}-${homeScore} ${home.team?.displayName || 'Home'}`);
+      showToast(`😔 Accumulator settled — all ${allSelections.length} legs completed`);
     }
 
     placedGameIds.delete(espnEvent.id);
@@ -1161,6 +1209,12 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
     const histTab = document.getElementById('tab-history');
     if (histTab && histTab.style.display !== 'none') {
       renderHistory();
+    }
+
+    // Refresh wallet if it's currently open
+    const walletTab = document.getElementById('tab-wallet');
+    if (walletTab && walletTab.style.display !== 'none') {
+      renderWallet();
     }
 
     // Also show a persistent notification banner on the history tab badge
