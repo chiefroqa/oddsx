@@ -16,8 +16,9 @@
 }
 body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-height:100vh}
 
-/* ── AUTH SCREEN ── */
-#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+/* ── AUTH SCREEN (Modal Overlay) ── */
+#auth-screen{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:200;align-items:center;justify-content:center;padding:20px}
+#auth-screen.show-modal{display:flex}
 .auth-card{background:var(--g2);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:100%;max-width:400px}
 .auth-logo{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:900;letter-spacing:3px;color:var(--accent);text-align:center;margin-bottom:4px}
 .auth-logo span{color:var(--accent2)}
@@ -164,8 +165,9 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 <div class="toast" id="toast"></div>
 
 <!-- AUTH SCREEN -->
-<div id="auth-screen">
+<div id="auth-screen" onclick="if(event.target.id==='auth-screen') closeAuthModal()">
   <div class="auth-card">
+    <button class="modal-close" onclick="closeAuthModal()" style="float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
     <div class="auth-logo">ODDS<span>X</span></div>
     <div class="auth-sub">Kenya's live sports betting platform</div>
     <div class="auth-tabs">
@@ -359,10 +361,19 @@ async function withTimeout(promise, ms = 10000) {
 
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
+  // Always show main app first (guest mode)
+  document.getElementById('main-app').style.display = 'block';
   if (session) await loadUser(session.user);
+  else {
+    // Guest mode — no user, but app is visible
+    currentUser = null;
+    initSports();
+    renderCrash();
+    renderMines();
+  }
   sb.auth.onAuthStateChange(async (event, session) => {
     if (session) await loadUser(session.user);
-    else showAuthScreen();
+    else currentUser = null; // Stay in guest mode, don't hide app
   });
 }
 
@@ -381,7 +392,8 @@ async function loadUser(user) {
   const initials = (profile?.full_name || user.email || '?')[0].toUpperCase();
   document.getElementById('avatar-init').textContent = initials;
   document.getElementById('dd-email').textContent = user.email;
-  document.getElementById('auth-screen').style.display = 'none';
+  // Close auth modal after successful login
+  document.getElementById('auth-screen').classList.remove('show-modal');
   document.getElementById('main-app').style.display = 'block';
   updateBalanceDisplay();
   initSports();
@@ -391,9 +403,13 @@ async function loadUser(user) {
 }
 
 function showAuthScreen() {
-  currentUser = null;
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('main-app').style.display = 'none';
+  // Show as modal overlay instead of full page
+  document.getElementById('auth-screen').classList.add('show-modal');
+  switchAuthTab('login'); // Show login tab by default
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-screen').classList.remove('show-modal');
 }
 
 function switchAuthTab(t) {
@@ -1015,6 +1031,12 @@ async function placeBet() {
   const stake = parseFloat(document.getElementById('stake').value) || 0;
   const bets = Object.values(selections);
   if (!bets.length) return;
+  // Check if user is logged in — if not, show login modal
+  if (!currentUser) {
+    showToast('Sign in to place a bet');
+    showAuthScreen();
+    return;
+  }
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
   const btn = document.getElementById('place-btn');
@@ -1491,6 +1513,12 @@ function renderCrashHist() {
 
 async function crashStart() {
   if (crashState !== 'idle') return;
+  // Check if user is logged in
+  if (!currentUser) {
+    showToast('Sign in to play');
+    showAuthScreen();
+    return;
+  }
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
@@ -1661,6 +1689,12 @@ function renderMineGrid() {
 }
 
 async function mineStart() {
+  // Check if user is logged in
+  if (!currentUser) {
+    showToast('Sign in to play');
+    showAuthScreen();
+    return;
+  }
   const stake = parseFloat(document.getElementById('m-stake').value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
