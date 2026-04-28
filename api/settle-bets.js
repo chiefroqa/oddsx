@@ -52,12 +52,13 @@ async function fetchRecentResults() {
   for (const data of responses) {
     for (const ev of (data.events || [])) {
       const status = ev.status?.type;
-      if (status?.completed || status?.state === 'post') {
+      const isFinished = status?.type?.completed === true || status?.state === 'post' || status?.completed === true;
+      if (isFinished) {
         const comp = ev.competitions?.[0];
         const home = comp?.competitors?.find(c => c.homeAway === 'home');
         const away = comp?.competitors?.find(c => c.homeAway === 'away');
         if (home && away) {
-          finishedGames.set(ev.id, {
+          finishedGames.set(String(ev.id), {
             id: ev.id,
             homeScore: parseInt(home.score) || 0,
             awayScore: parseInt(away.score) || 0,
@@ -86,7 +87,7 @@ function evaluateBet(bet, finishedGames) {
   let allCorrect = true;
 
   for (const sel of selections) {
-    const game = finishedGames.get(sel.gameId);
+    const game = finishedGames.get(String(sel.gameId)) || finishedGames.get(sel.gameId);
     if (!game) {
       // This game hasn't finished yet — bet stays pending
       allSettled = false;
@@ -140,11 +141,18 @@ export default async function handler(req, res) {
       try {
         const payout = outcome === 'won' ? bet.potential_payout : 0;
 
-        // Update bet status
-        await supabase
+        // Update bet status ONLY if still pending — prevents duplicate credits
+        const { data: updated, error: updateErr } = await supabase
           .from('bets')
           .update({ status: outcome, payout })
-          .eq('id', bet.id);
+          .eq('id', bet.id)
+          .eq('status', 'pending') // safety: only update if truly still pending
+          .select();
+        
+        if (updateErr || !updated?.length) {
+          console.log('Bet already settled or error:', bet.id, updateErr?.message);
+          continue; // skip — already settled
+        }
 
         if (outcome === 'won') {
           // Credit user balance

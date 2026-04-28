@@ -505,7 +505,7 @@ function showTab(t) {
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
-  if (t==='history') { renderHistory(); checkAndSettlePendingBets(); }
+  if (t==='history') renderHistory();
 }
 
 // ─── TOAST ───
@@ -1701,39 +1701,40 @@ async function mineCash() {
 // Fallback for bets stuck as pending — fetches ESPN results directly
 // Called by user via "Settle Pending" button or on every history open
 async function checkAndSettlePendingBets() {
+  // Re-fetch from Supabase to get FRESH status — never trust local state
   const { data: pendingBets } = await sb.from('bets')
     .select('*')
     .eq('user_id', currentUser.id)
-    .eq('status', 'pending');
+    .eq('status', 'pending'); // only truly pending ones
 
   if (!pendingBets?.length) {
     showToast('No pending bets to settle');
     return;
   }
 
-  showToast(`Checking ${pendingBets.length} pending bet${pendingBets.length>1?'s':''}...`);
+  showToast('Checking ' + pendingBets.length + ' pending bet' + (pendingBets.length>1?'s':'') + '...');
 
-  // Collect all unique game IDs from pending bets
-  const gameIds = new Set();
-  pendingBets.forEach(b => b.selections?.forEach(s => { if(s.gameId) gameIds.add(s.gameId); }));
-
-  // Fetch recent ESPN results (yesterday + today)
+  // Fetch ESPN results for past 3 days to catch any finished games
   const dates = [];
-  for (let i = -2; i <= 0; i++) {
+  for (let i = -3; i <= 0; i++) {
     const d = new Date(); d.setDate(d.getDate() + i);
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
 
   const LEAGUES = [
-    'soccer/eng.1','soccer/eng.fa','soccer/esp.1','soccer/ita.1',
-    'soccer/ger.1','soccer/fra.1','soccer/uefa.champions','soccer/uefa.europa',
-    'soccer/uefa.europaconf','basketball/nba','baseball/mlb','hockey/nhl',
+    'soccer/eng.1','soccer/eng.fa','soccer/eng.league_cup',
+    'soccer/esp.1','soccer/ita.1','soccer/ger.1','soccer/fra.1',
+    'soccer/uefa.champions','soccer/uefa.europa','soccer/uefa.europaconf',
+    'basketball/nba','baseball/mlb','hockey/nhl',
   ];
 
   const fetches = [];
   for (const league of LEAGUES) {
     for (const date of dates) {
-      fetches.push(fetch(`https://site.api.espn.com/apis/site/v2/sports/${league}/scoreboard?dates=${date}&limit=100`).then(r=>r.json()).catch(()=>({})));
+      fetches.push(
+        fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100')
+          .then(r => r.json()).catch(() => ({}))
+      );
     }
   }
 
@@ -1742,64 +1743,100 @@ async function checkAndSettlePendingBets() {
 
   for (const data of responses) {
     for (const ev of (data.events || [])) {
-      const status = ev.status?.type;
-      if (status?.completed || status?.state === 'post') {
-        const comp = ev.competitions?.[0];
-        const home = comp?.competitors?.find(c=>c.homeAway==='home');
-        const away = comp?.competitors?.find(c=>c.homeAway==='away');
-        if (home && away) {
-          finishedGames.set(ev.id, {
-            homeScore: parseInt(home.score)||0,
-            awayScore: parseInt(away.score)||0,
-            homeTeam: home.team?.displayName,
-            awayTeam: away.team?.displayName,
-          });
-        }
-      }
+      // ESPN marks completed games with status.type.completed = true
+      // Also check state === 'post' as fallback
+      const statusType = ev.status?.type;
+      const isFinished = statusType?.completed === true || statusType?.state === 'post';
+      if (!isFinished) continue;
+
+      const comp = ev.competitions?.[0];
+      const home = comp?.competitors?.find(c => c.homeAway === 'home');
+      const away = comp?.competitors?.find(c => c.homeAway === 'away');
+      if (!home || !away) continue;
+
+      finishedGames.set(String(ev.id), {
+        homeScore: parseInt(home.score) || 0,
+        awayScore: parseInt(away.score) || 0,
+        homeTeam: home.team?.displayName,
+        awayTeam: away.team?.displayName,
+      });
     }
   }
 
+  console.log('Finished games found:', finishedGames.size, [...finishedGames.keys()].slice(0,5));
+
   let settled = 0;
+  const wins = [], losses = [];
+
   for (const bet of pendingBets) {
     const selections = bet.selections || [];
-    let allDone = true, allCorrect = true;
+    if (!selections.length) continue;
+
+    let allFinished = true;
+    let allCorrect = true;
+    let gameLog = [];
 
     for (const sel of selections) {
-      const game = finishedGames.get(sel.gameId);
-      if (!game) { allDone = false; break; }
+      // Try both string and number ID since ESPN can return either
+      const game = finishedGames.get(String(sel.gameId)) || finishedGames.get(sel.gameId);
+      if (!game) {
+        allFinished = false;
+        gameLog.push('Game ' + sel.gameId + ' not finished yet');
+        break;
+      }
       const hS = game.homeScore, aS = game.awayScore;
       const result = hS > aS ? 'home' : aS > hS ? 'away' : 'draw';
+      gameLog.push('Game ' + sel.gameId + ': ' + hS + '-' + aS + ' result=' + result + ' selected=' + sel.type);
       if (sel.type !== result) allCorrect = false;
     }
 
-    if (!allDone) continue; // game not finished yet
+    console.log('Bet', bet.id, ':', gameLog.join(', '));
+    if (!allFinished) continue;
 
     const outcome = allCorrect ? 'won' : 'lost';
-    const payout = outcome === 'won' ? bet.potential_payout : 0;
+    const payout = outcome === 'won' ? (bet.potential_payout || 0) : 0;
 
-    await sb.from('bets').update({ status: outcome, payout }).eq('id', bet.id);
+    // CRITICAL: Update bet status FIRST before touching balance
+    // This prevents duplicate credits if anything fails after
+    const { error: updateError } = await sb.from('bets')
+      .update({ status: outcome, payout })
+      .eq('id', bet.id)
+      .eq('status', 'pending'); // double-check: only update if still pending
 
+    if (updateError) {
+      console.error('Failed to update bet', bet.id, updateError);
+      continue; // skip balance update if bet update failed
+    }
+
+    // Now safe to update balance
     if (outcome === 'won') {
       const newBal = userBalance + payout;
       await updateBalance(newBal, 'bet_win', payout,
-        'Bet won — ' + selections.map(s=>s.label).join(' + '));
-      showToast('🎉 Bet WON! +KSH ' + (payout - bet.stake).toLocaleString());
+        'Bet won — ' + selections.map(s => s.label).join(' + '));
+      wins.push(payout - bet.stake);
     } else {
+      // Just write the loss transaction record
+      const { data: prof } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
       await sb.from('transactions').insert({
-        user_id: currentUser.id, type: 'bet_loss', amount: bet.stake,
-        label: 'Bet lost — ' + selections.map(s=>s.label).join(' + '),
-        balance_after: userBalance
+        user_id: currentUser.id,
+        type: 'bet_loss',
+        amount: bet.stake,
+        label: 'Bet lost — ' + selections.map(s => s.label).join(' + '),
+        balance_after: prof?.balance || userBalance,
       });
+      losses.push(bet.stake);
     }
+
     settled++;
   }
 
   if (settled > 0) {
-    showToast(`✅ Settled ${settled} bet${settled>1?'s':''}!`);
+    if (wins.length) showToast('🎉 ' + wins.length + ' bet' + (wins.length>1?'s':'') + ' WON! +KSH ' + wins.reduce((a,b)=>a+b,0).toLocaleString());
+    else showToast('Settled ' + losses.length + ' bet' + (losses.length>1?'s':'') + ' — better luck next time');
+    await refreshBalance();
     renderHistory();
-    refreshBalance();
   } else {
-    showToast('No finished games found for pending bets yet');
+    showToast('Games still in progress — check back later');
   }
 }
 
