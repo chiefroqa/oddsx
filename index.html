@@ -264,7 +264,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       </div>
       <div class="mpesa-note">
         📲 Send M-Pesa to:<br>
-        <b style="font-size:16px;color:var(--accent)">8036678 Coral</b> or <b style="font-size:16px;color:var(--accent)">0700702941</b><br><br>
+        <b style="font-size:16px;color:var(--accent)">Till 8036678 Coral</b> or <b style="font-size:16px;color:var(--accent)">0700702941</b><br><br>
         Use your registered phone number as the account reference.<br>
         After sending, paste your M-Pesa confirmation code below.
       </div>
@@ -1517,14 +1517,14 @@ async function crashStart() {
   crashState = 'running';
   crashMult = 1.0;
   // Aviator-style crash distribution — same formula used by Spribe/Aviator
-  // House edge: 4% of rounds crash at exactly 1.00x (instant)
-  // Other rounds: crash = 96 / (100 * rand) — gives realistic distribution:
-  //   ~33% crash below 1.5x, ~50% below 2x, ~16% above 5x, ~7% above 10x
+  // House edge: 3% of rounds crash at exactly 1.00x (instant)
+  // Other rounds: crash = 97 / (100 * rand) — gives realistic distribution:
+  //   ~36% crash below 1.5x, ~53% below 2x, ~19% above 5x, ~9% above 10x
   const r = Math.random();
-  if (r < 0.04) {
-    crashTarget = 1.00; // 4% house edge rounds (Kenya BGT compliant)
+  if (r < 0.03) {
+    crashTarget = 1.00; // 3% house edge rounds (globally competitive)
   } else {
-    crashTarget = Math.max(1.01, Math.min(1000, +(96 / (100 * r)).toFixed(2)));
+    crashTarget = Math.max(1.01, Math.min(1000, +(97 / (100 * r)).toFixed(2)));
   }
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
