@@ -514,6 +514,12 @@ async function updateBalance(newBalance, txType, txAmount, txLabel) {
 
 // ─── TABS ───
 function showTab(t) {
+  // Check auth for protected tabs
+  if ((t === 'wallet' || t === 'history') && !currentUser) {
+    showToast('Sign in to access ' + t);
+    showAuthScreen();
+    return;
+  }
   const tabs = ['sports','crash','mines','wallet','history'];
   tabs.forEach(id => document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none');
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
