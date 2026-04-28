@@ -1517,14 +1517,14 @@ async function crashStart() {
   crashState = 'running';
   crashMult = 1.0;
   // Aviator-style crash distribution — same formula used by Spribe/Aviator
-  // House edge: 1% of rounds crash at exactly 1.00x (instant)
-  // Other rounds: crash = 99 / (100 * rand) — gives realistic distribution:
-  //   ~35% crash below 1.5x, ~52% below 2x, ~18% above 5x, ~8% above 10x
+  // House edge: 4% of rounds crash at exactly 1.00x (instant)
+  // Other rounds: crash = 96 / (100 * rand) — gives realistic distribution:
+  //   ~33% crash below 1.5x, ~50% below 2x, ~16% above 5x, ~7% above 10x
   const r = Math.random();
-  if (r < 0.01) {
-    crashTarget = 1.00; // 1% house edge rounds
+  if (r < 0.04) {
+    crashTarget = 1.00; // 4% house edge rounds (Kenya BGT compliant)
   } else {
-    crashTarget = Math.max(1.01, Math.min(1000, +(99 / (100 * r)).toFixed(2)));
+    crashTarget = Math.max(1.01, Math.min(1000, +(96 / (100 * r)).toFixed(2)));
   }
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
