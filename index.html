@@ -1130,8 +1130,6 @@ async function fetchAllFinishedGames(daysBack) {
   return games;
 }
 
-// Polls every 60s — when a game finishes, determines winner from ESPN
-// score and auto-credits payout. No admin needed.
 let activeGamePolls = {}; // gameId -> intervalId
 
 async function watchForResult(gameId, betId, selectionType, allSelections) {
@@ -1142,7 +1140,7 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
       const finishedGames = await fetchAllFinishedGames(2);
       const allGameIds = allSelections.map(s=>String(s.gameId));
       const allFinished = allGameIds.every(id => finishedGames.has(id));
-      if (!allFinished) return; // not done yet
+      if (!allFinished) return; // not all legs done yet
 
       clearInterval(poll);
       delete activeGamePolls[gameId];
@@ -1154,7 +1152,7 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
         if (!game || sel.type !== game.result) { allCorrect = false; break; }
       }
 
-      // Settle via Supabase directly
+      // Fetch fresh bet state — guard against double-settle
       const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
       if (!betData || betData.status !== 'pending') return;
 
@@ -1172,7 +1170,10 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
         await updateBalance(newBal, 'bet_win', payout, allSelections.length + '-leg accumulator won');
         showToast('🎉 Bet WON! +KSH ' + (payout - betData.stake).toLocaleString() + ' credited!');
         const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
-        if (histNav) { histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>'; setTimeout(()=>{if(histNav)histNav.textContent='📋 History';},10000); }
+        if (histNav) {
+          histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>';
+          setTimeout(()=>{ if(histNav) histNav.textContent='📋 History'; }, 10000);
+        }
       } else {
         const { data: prof } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
         await sb.from('transactions').insert({ user_id: currentUser.id, type:'bet_loss', amount: betData.stake, label: allSelections.length + '-leg accumulator lost', balance_after: prof?.balance||userBalance });
@@ -1198,7 +1199,7 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
     const gameIds = allSelections.map(s => s.gameId).filter(Boolean);
     if (!gameIds.length) return;
 
-    // Use fetchAllFinishedGames to look up results — no broken /events/{id} endpoint
+    // Use fetchAllFinishedGames — the /events/{id} endpoint is broken
     const finishedMap = await fetchAllFinishedGames(3);
     const gameResults = {};
     let allFinished = true;
@@ -1209,68 +1210,40 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
       gameResults[gameId] = game;
     }
 
-    // If not all games are finished yet, don't settle
     if (!allFinished) return;
 
-    // All games finished — now evaluate the accumulator
     const allCorrect = allSelections.every(sel => {
-      const gameResult = gameResults[sel.gameId];
-      if (!gameResult) return false; // Game data not found
-      return sel.type === gameResult.result;
+      const r = gameResults[sel.gameId];
+      return r && sel.type === r.result;
     });
 
     const won = allCorrect;
     const payout = won ? betData.potential_payout : 0;
 
-    // Update bet status in database
-    const { error: updateError } = await sb.from('bets').update({ status: won ? 'won' : 'lost', payout }).eq('id', betId);
-    
-    if (updateError) {
-      console.error('Error updating bet:', updateError);
-      return;
-    }
+    const { error: updateError } = await sb.from('bets')
+      .update({ status: won ? 'won' : 'lost', payout })
+      .eq('id', betId).eq('status','pending');
 
-    // Get first game result for display
-    const firstGameId = gameIds[0];
-    const firstResult = gameResults[firstGameId];
+    if (updateError) { console.error('Error updating bet:', updateError); return; }
 
     if (won) {
       const newBal = userBalance + payout;
-      await updateBalance(newBal, 'bet_win', payout,
-        `${allSelections.length}-leg accumulator won`);
+      await updateBalance(newBal, 'bet_win', payout, `${allSelections.length}-leg accumulator won`);
       showToast(`🎉 Accumulator WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
     } else {
-      // Write a settled transaction so it appears in wallet history too
       await sb.from('transactions').insert({
-        user_id: currentUser.id,
-        type: 'bet_loss',
-        amount: betData.stake,
-        label: `${allSelections.length}-leg accumulator lost`,
-        balance_after: userBalance
+        user_id: currentUser.id, type: 'bet_loss', amount: betData.stake,
+        label: `${allSelections.length}-leg accumulator lost`, balance_after: userBalance
       });
       showToast(`😔 Accumulator settled — all ${allSelections.length} legs completed`);
     }
 
-    placedGameIds.delete(espnEvent.id);
+    if (espnEvent) placedGameIds.delete(espnEvent.id);
     renderSports();
-    
-    // Clear caches to refresh history and wallet
     betHistoryCache = null;
     transactionCache = null;
-
-    // Refresh history tab if it's currently open
-    const histTab = document.getElementById('tab-history');
-    if (histTab && histTab.style.display !== 'none') {
-      renderHistory();
-    }
-
-    // Refresh wallet if it's currently open
-    const walletTab = document.getElementById('tab-wallet');
-    if (walletTab && walletTab.style.display !== 'none') {
-      renderWallet();
-    }
-
-    // Also show a persistent notification banner on the history tab badge
+    if (document.getElementById('tab-history')?.style.display !== 'none') renderHistory();
+    if (document.getElementById('tab-wallet')?.style.display !== 'none') renderWallet();
     const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
     if (histNav && won) {
       histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
@@ -1284,9 +1257,7 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
 // Load user's pending bets on login and start watching for results
 async function resumePendingBets() {
   const { data: bets } = await sb.from('bets')
-    .select('*')
-    .eq('user_id', currentUser.id)
-    .eq('status', 'pending');
+    .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
   if (!bets?.length) return;
 
   // Restore placedGameIds so user can't double-bet
@@ -1297,7 +1268,7 @@ async function resumePendingBets() {
     }
   }
 
-  // Check if any games are already finished — settle immediately, then watch the rest
+  // One bulk fetch — settle finished bets immediately, watch the rest
   const finishedGames = await fetchAllFinishedGames(3);
 
   for (const bet of bets) {
@@ -1313,29 +1284,23 @@ async function resumePendingBets() {
     }
   }
 
-  // Start periodic check for pending bets every 5 minutes to catch any missed settlements
   if (!window.pendingBetsCheckInterval) {
-    window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000); // 5 minutes
+    window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000);
   }
 }
 
-// Periodic check to settle any pending bets that might have been missed
+// Periodic fallback — catches any bets missed by the poll
 async function checkPendingBetsForSettlement() {
   try {
     const { data: bets } = await sb.from('bets')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .eq('status', 'pending');
-
+      .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
     if (!bets?.length) return;
 
     const finishedGames = await fetchAllFinishedGames(3);
-
     for (const bet of bets) {
       if (!bet.selections) continue;
       const allGameIds = bet.selections.map(s => String(s.gameId));
-      const allFinished = allGameIds.every(id => finishedGames.has(id));
-      if (allFinished) {
+      if (allGameIds.every(id => finishedGames.has(id))) {
         await settleBetFromResult(bet.id, bet.selections, null);
       }
     }
@@ -1343,7 +1308,6 @@ async function checkPendingBetsForSettlement() {
     console.error('Error in pending bets check:', e);
   }
 }
-
 function renderCrash() {
   const el = document.getElementById('tab-crash');
   el.innerHTML = `
@@ -1751,10 +1715,8 @@ async function checkAndSettlePendingBets() {
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
 
-  const LEAGUES = ALL_LEAGUES;
-
   const fetches = [];
-  for (const league of LEAGUES) {
+  for (const league of ALL_LEAGUES) {
     for (const date of dates) {
       fetches.push(
         fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100')
