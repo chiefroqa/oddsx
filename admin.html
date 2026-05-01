@@ -504,28 +504,126 @@ async function saveBalance() {
 }
 
 // ── BETS ──
+const ESPN_LEAGUES = [
+  'soccer/eng.1','soccer/eng.fa','soccer/eng.league_cup',
+  'soccer/esp.1','soccer/ita.1','soccer/ger.1','soccer/fra.1',
+  'soccer/uefa.champions','soccer/uefa.europa','soccer/uefa.europaconf',
+  'basketball/nba','baseball/mlb','hockey/nhl',
+];
+
+async function fetchFinishedGames() {
+  const dates = [];
+  for (let i = -3; i <= 0; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
+  }
+  const fetches = [];
+  for (const league of ESPN_LEAGUES) {
+    for (const date of dates) {
+      fetches.push(fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100').then(r=>r.json()).catch(()=>({})));
+    }
+  }
+  const responses = await Promise.all(fetches);
+  const games = new Map();
+  for (const data of responses) {
+    for (const ev of (data.events||[])) {
+      const st = ev.status?.type;
+      if (!(st?.completed === true || st?.state === 'post')) continue;
+      const comp = ev.competitions?.[0];
+      const home = comp?.competitors?.find(c=>c.homeAway==='home');
+      const away = comp?.competitors?.find(c=>c.homeAway==='away');
+      if (!home||!away) continue;
+      const hS = parseInt(home.score)||0, aS = parseInt(away.score)||0;
+      games.set(String(ev.id), {
+        homeTeam: home.team?.displayName||'Home',
+        awayTeam: away.team?.displayName||'Away',
+        homeScore: hS, awayScore: aS,
+        result: hS>aS?'home':aS>hS?'away':'draw',
+        display: (away.team?.abbreviation||'AWY') + ' ' + aS + '-' + hS + ' ' + (home.team?.abbreviation||'HME'),
+      });
+    }
+  }
+  return games;
+}
+
 async function loadBets() {
-  const { data } = await sb.from('bets').select('*, profiles(email)').order('created_at', { ascending:false }).limit(100);
   const el = document.getElementById('bets-table');
-  if (!data?.length) { el.innerHTML = '<div class="loading-row">No bets yet</div>'; return; }
-  el.innerHTML = `<table>
-    <tr><th>Date</th><th>User</th><th>Selections</th><th>Stake</th><th>Odds</th><th>Potential</th><th>Status</th><th>Settle</th></tr>
-    ${data.map(b => `<tr>
-      <td style="font-size:11px;color:var(--muted)">${fmtDate(b.created_at)}</td>
-      <td style="font-size:12px">${b.profiles?.email || b.user_id?.slice(0,8)}</td>
-      <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">${b.selections?.map(s=>s.label).join(' + ')}</td>
-      <td style="font-weight:600">${fmt(b.stake)}</td>
-      <td style="color:var(--gold)">${b.odds_total}x</td>
-      <td>${fmt(b.potential_payout)}</td>
-      <td><span class="badge ${b.status}">${b.status}</span></td>
-      <td style="display:flex;gap:4px">
-        ${b.status === 'pending' ? `
-          <button class="action-btn approve" onclick="settleBet('${b.id}','${b.user_id}',${b.potential_payout},'won')">✓ Won</button>
-          <button class="action-btn reject" onclick="settleBet('${b.id}','${b.user_id}',0,'lost')">✗ Lost</button>
-        ` : b.payout > 0 ? fmt(b.payout) : '—'}
-      </td>
-    </tr>`).join('')}
-  </table>`;
+  el.innerHTML = '<div class="loading-row"><span class="loading"></span>Loading bets and ESPN results...</div>';
+
+  const [betsRes, finishedGames] = await Promise.all([
+    sb.from('bets').select('*, profiles(email)').order('created_at', { ascending:false }).limit(150),
+    fetchFinishedGames()
+  ]);
+
+  const data = betsRes.data || [];
+  if (!data.length) { el.innerHTML = '<div class="loading-row">No bets yet</div>'; return; }
+
+  // Auto-settle pending bets where all games have finished
+  let autoSettled = 0;
+  for (const b of data) {
+    if (b.status !== 'pending') continue;
+    const sels = b.selections || [];
+    if (!sels.length) continue;
+
+    let allFinished = true, allCorrect = true;
+    for (const sel of sels) {
+      const game = finishedGames.get(String(sel.gameId));
+      if (!game) { allFinished = false; break; }
+      if (sel.type !== game.result) allCorrect = false;
+    }
+    if (!allFinished) continue;
+
+    const outcome = allCorrect ? 'won' : 'lost';
+    const payout = allCorrect ? b.potential_payout : 0;
+    const { error, data: updated } = await sb.from('bets')
+      .update({ status: outcome, payout })
+      .eq('id', b.id).eq('status', 'pending').select();
+
+    if (!error && updated?.length) {
+      b.status = outcome; b.payout = payout;
+      const { data: prof } = await sb.from('profiles').select('balance').eq('id', b.user_id).single();
+      const curBal = prof?.balance || 0;
+      if (outcome === 'won') {
+        const newBal = curBal + payout;
+        await sb.from('profiles').update({ balance: newBal }).eq('id', b.user_id);
+        await sb.from('transactions').insert({ user_id: b.user_id, type:'bet_win', amount: payout, label:'Bet won — auto-settled by admin panel', balance_after: newBal });
+      } else {
+        await sb.from('transactions').insert({ user_id: b.user_id, type:'bet_loss', amount: b.stake, label:'Bet lost — auto-settled by admin panel', balance_after: curBal });
+      }
+      autoSettled++;
+    }
+  }
+
+  if (autoSettled > 0) toast('✅ Auto-settled ' + autoSettled + ' bet' + (autoSettled > 1 ? 's' : ''));
+
+  el.innerHTML = '<table><tr><th>Date</th><th>User</th><th>Selections</th><th>Results</th><th>Stake</th><th>Odds</th><th>Potential</th><th>Status</th><th>Payout</th><th>Override</th></tr>' +
+    data.map(b => {
+      const sels = b.selections || [];
+      const legs = sels.map(s => s.label).join(' + ') || '—';
+      const resultsHtml = sels.map(sel => {
+        const game = finishedGames.get(String(sel.gameId));
+        if (!game) return '<span style="color:var(--gold);font-size:10px">⏳ Not finished</span>';
+        const correct = sel.type === game.result;
+        return '<span style="font-size:10px;display:block;margin-bottom:2px">' + (correct ? '✅' : '❌') + ' ' + game.display + '</span>';
+      }).join('');
+
+      return '<tr>' +
+        '<td style="font-size:11px;color:var(--muted)">' + fmtDate(b.created_at) + '</td>' +
+        '<td style="font-size:12px">' + (b.profiles?.email || b.user_id?.slice(0,8)) + '</td>' +
+        '<td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + legs + '</td>' +
+        '<td style="min-width:130px">' + (resultsHtml || '<span style="color:var(--muted);font-size:10px">—</span>') + '</td>' +
+        '<td style="font-weight:600">' + fmt(b.stake) + '</td>' +
+        '<td style="color:var(--gold)">' + b.odds_total + 'x</td>' +
+        '<td>' + fmt(b.potential_payout) + '</td>' +
+        '<td><span class="badge ' + b.status + '">' + b.status + '</span></td>' +
+        '<td style="color:var(--accent)">' + (b.payout > 0 ? fmt(b.payout) : '—') + '</td>' +
+        '<td style="display:flex;gap:4px">' +
+          (b.status === 'pending' ?
+            '<button class="action-btn approve" onclick="settleBet(\'' + b.id + '\',\'' + b.user_id + '\',' + b.potential_payout + ',\'won\')" title="Won">✓</button>' +
+            '<button class="action-btn reject" onclick="settleBet(\'' + b.id + '\',\'' + b.user_id + '\',0,\'lost\')" title="Lost">✗</button>'
+            : '—') +
+        '</td></tr>';
+    }).join('') + '</table>';
 }
 
 async function settleBet(betId, userId, payout, result) {

@@ -941,9 +941,11 @@ function renderSports() {
       : '';
 
     const canBet = !locked && !alreadyBet;
+    const leagueSlug = sport?.leagues?.[0] || '';
+    const gameDate = g.date ? g.date.slice(0,10).replace(/-/g,'') : '';
 
     const oddsClick = (type, team, odds) =>
-      canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}')"` : '';
+      canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}','${leagueSlug}','${gameDate}')"` : '';
 
     el.innerHTML += `
     <div class="game-card" style="${locked?'opacity:0.7':''}">
@@ -1005,9 +1007,9 @@ function renderSports() {
   });
 }
 
-function selectOdd(gameId, type, label, odds) {
+function selectOdd(gameId, type, label, odds, leagueSlug, gameDate) {
   if (selections[gameId]?.type === type) delete selections[gameId];
-  else selections[gameId] = { type, label, odds, gameId };
+  else selections[gameId] = { type, label, odds, gameId, leagueSlug, gameDate };
   const n = Object.keys(selections).length;
   document.getElementById('slip-cnt').textContent = n;
   document.getElementById('betslip').style.display = n > 0 ? 'flex' : 'none';
@@ -1085,114 +1087,126 @@ async function placeBet() {
 
 // ─── PEPEA ───
 // ─── AUTO BET SETTLEMENT ───
+// ALL_LEAGUES used for result lookup — ESPN has no single /events/{id} endpoint
+const ALL_LEAGUES = [
+  'soccer/eng.1','soccer/eng.fa','soccer/eng.league_cup',
+  'soccer/esp.1','soccer/ita.1','soccer/ger.1','soccer/fra.1',
+  'soccer/uefa.champions','soccer/uefa.europa','soccer/uefa.europaconf',
+  'basketball/nba','baseball/mlb','hockey/nhl',
+];
+
+// Fetch all finished games across all leagues for a date range
+// Returns Map of gameId -> { result, homeScore, awayScore, homeTeam, awayTeam }
+async function fetchAllFinishedGames(daysBack) {
+  const dates = [];
+  for (let i = -(daysBack||3); i <= 0; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
+  }
+  const fetches = [];
+  for (const league of ALL_LEAGUES) {
+    for (const date of dates) {
+      fetches.push(fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100').then(r=>r.json()).catch(()=>({})));
+    }
+  }
+  const responses = await Promise.all(fetches);
+  const games = new Map();
+  for (const data of responses) {
+    for (const ev of (data.events||[])) {
+      const st = ev.status?.type;
+      if (!(st?.completed === true || st?.state === 'post')) continue;
+      const comp = ev.competitions?.[0];
+      const home = comp?.competitors?.find(c=>c.homeAway==='home');
+      const away = comp?.competitors?.find(c=>c.homeAway==='away');
+      if (!home||!away) continue;
+      const hS = parseInt(home.score)||0, aS = parseInt(away.score)||0;
+      games.set(String(ev.id), {
+        result: hS>aS?'home':aS>hS?'away':'draw',
+        homeScore: hS, awayScore: aS,
+        homeTeam: home.team?.displayName, awayTeam: away.team?.displayName,
+      });
+    }
+  }
+  return games;
+}
+
 // Polls every 60s — when a game finishes, determines winner from ESPN
 // score and auto-credits payout. No admin needed.
 let activeGamePolls = {}; // gameId -> intervalId
 
 async function watchForResult(gameId, betId, selectionType, allSelections) {
-  // Don't create multiple polls for same game
   if (activeGamePolls[gameId]) return;
-  
+
   const poll = setInterval(async () => {
     try {
-      // Check cache first
-      const cachedStatus = getCachedGameStatus(gameId);
-      if (cachedStatus === 'final') {
-        clearInterval(poll);
-        delete activeGamePolls[gameId];
-        // Fetch fresh data to settle
-        const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
-        if (gameData.events && gameData.events.length > 0) {
-          await settleBetFromResult(betId, allSelections, gameData.events[0]);
-        }
-        return;
+      const finishedGames = await fetchAllFinishedGames(2);
+      const allGameIds = allSelections.map(s=>String(s.gameId));
+      const allFinished = allGameIds.every(id => finishedGames.has(id));
+      if (!allFinished) return; // not done yet
+
+      clearInterval(poll);
+      delete activeGamePolls[gameId];
+
+      // Evaluate all legs
+      let allCorrect = true;
+      for (const sel of allSelections) {
+        const game = finishedGames.get(String(sel.gameId));
+        if (!game || sel.type !== game.result) { allCorrect = false; break; }
       }
-      
-      // Fetch the game directly from ESPN to check its status
-      const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
-      
-      if (!gameData.events || !gameData.events.length) return;
-      
-      const ev = gameData.events[0];
-      const status = ev.status?.type;
-      const isFinal = status?.state === 'post';
-      
-      if (isFinal) {
-        setCachedGameStatus(gameId, 'final');
-        clearInterval(poll);
-        delete activeGamePolls[gameId];
-        await settleBetFromResult(betId, allSelections, ev);
+
+      // Settle via Supabase directly
+      const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
+      if (!betData || betData.status !== 'pending') return;
+
+      const outcome = allCorrect ? 'won' : 'lost';
+      const payout = allCorrect ? betData.potential_payout : 0;
+
+      const { error, data: updated } = await sb.from('bets')
+        .update({ status: outcome, payout })
+        .eq('id', betId).eq('status','pending').select();
+
+      if (error || !updated?.length) return;
+
+      if (outcome === 'won') {
+        const newBal = userBalance + payout;
+        await updateBalance(newBal, 'bet_win', payout, allSelections.length + '-leg accumulator won');
+        showToast('🎉 Bet WON! +KSH ' + (payout - betData.stake).toLocaleString() + ' credited!');
+        const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
+        if (histNav) { histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>'; setTimeout(()=>{if(histNav)histNav.textContent='📋 History';},10000); }
+      } else {
+        const { data: prof } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
+        await sb.from('transactions').insert({ user_id: currentUser.id, type:'bet_loss', amount: betData.stake, label: allSelections.length + '-leg accumulator lost', balance_after: prof?.balance||userBalance });
+        showToast('😔 Bet settled as lost');
       }
+
+      placedGameIds.delete(gameId);
+      renderSports();
+      if (document.getElementById('tab-history').style.display !== 'none') renderHistory();
     } catch(e) {
-      console.error('Error checking game result:', e);
+      console.error('Poll error:', e);
     }
-  }, 30000); // Check every 30 seconds (was 60)
-  
+  }, 60000); // Check every 60 seconds
+
   activeGamePolls[gameId] = poll;
 }
 
 async function settleBetFromResult(betId, allSelections, espnEvent) {
   try {
-    // Get the current bet to find stake and potential payout
     const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
-    if (!betData) return;
-    
-    // Don't re-settle if already settled
-    if (betData.status !== 'pending') return;
+    if (!betData || betData.status !== 'pending') return;
 
-    // For accumulator — need to fetch ALL games to check if they're all finished
     const gameIds = allSelections.map(s => s.gameId).filter(Boolean);
     if (!gameIds.length) return;
 
-    // Fetch all games to check their statuses
+    // Use fetchAllFinishedGames to look up results — no broken /events/{id} endpoint
+    const finishedMap = await fetchAllFinishedGames(3);
     const gameResults = {};
     let allFinished = true;
-    
+
     for (const gameId of gameIds) {
-      try {
-        const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${gameId}`).then(r => r.json()).catch(() => ({}));
-        
-        if (!gameData.events || !gameData.events.length) {
-          allFinished = false;
-          continue;
-        }
-        
-        const ev = gameData.events[0];
-        const status = ev.status?.type;
-        const isFinal = status?.state === 'post';
-        
-        if (!isFinal) {
-          allFinished = false;
-          continue;
-        }
-        
-        // Game is finished — extract result
-        const comp = ev.competitions?.[0];
-        if (!comp) continue;
-        
-        const home = comp.competitors?.find(c => c.homeAway === 'home');
-        const away = comp.competitors?.find(c => c.homeAway === 'away');
-        if (!home || !away) continue;
-        
-        const homeScore = home.score ?? 0;
-        const awayScore = away.score ?? 0;
-        
-        let result = 'draw';
-        if (homeScore > awayScore) result = 'home';
-        else if (awayScore > homeScore) result = 'away';
-        
-        gameResults[gameId] = {
-          result,
-          homeTeam: home.team?.displayName || 'Home',
-          awayTeam: away.team?.displayName || 'Away',
-          homeScore,
-          awayScore,
-          ev
-        };
-      } catch(e) {
-        console.error('Error fetching game result:', e);
-        allFinished = false;
-      }
+      const game = finishedMap.get(String(gameId));
+      if (!game) { allFinished = false; continue; }
+      gameResults[gameId] = game;
     }
 
     // If not all games are finished yet, don't settle
@@ -1274,40 +1288,31 @@ async function resumePendingBets() {
     .eq('user_id', currentUser.id)
     .eq('status', 'pending');
   if (!bets?.length) return;
-  
+
   // Restore placedGameIds so user can't double-bet
-  // And watch each game for results to auto-settle the bet
   for (const bet of bets) {
     if (!bet.selections) continue;
-    
     for (const sel of bet.selections) {
-      if (sel.gameId) {
-        placedGameIds.add(sel.gameId);
-        
-        // Check if game is already finished (in case app was offline)
-        try {
-          const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${sel.gameId}`).then(r => r.json()).catch(() => ({}));
-          if (gameData.events && gameData.events.length > 0) {
-            const ev = gameData.events[0];
-            const status = ev.status?.type;
-            const isFinal = status?.state === 'post';
-            
-            // If game is already finished, settle immediately
-            if (isFinal) {
-              await settleBetFromResult(bet.id, bet.selections, ev);
-              continue;
-            }
-          }
-        } catch(e) {
-          console.error('Error checking game status:', e);
-        }
-        
-        // Otherwise watch for future results
-        watchForResult(sel.gameId, bet.id, sel.type, bet.selections);
-      }
+      if (sel.gameId) placedGameIds.add(sel.gameId);
     }
   }
-  
+
+  // Check if any games are already finished — settle immediately, then watch the rest
+  const finishedGames = await fetchAllFinishedGames(3);
+
+  for (const bet of bets) {
+    if (!bet.selections) continue;
+    const allGameIds = bet.selections.map(s => String(s.gameId));
+    const allFinished = allGameIds.every(id => finishedGames.has(id));
+
+    if (allFinished) {
+      await settleBetFromResult(bet.id, bet.selections, null);
+    } else {
+      const firstGameId = bet.selections[0]?.gameId;
+      if (firstGameId) watchForResult(firstGameId, bet.id, bet.selections[0]?.type, bet.selections);
+    }
+  }
+
   // Start periodic check for pending bets every 5 minutes to catch any missed settlements
   if (!window.pendingBetsCheckInterval) {
     window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000); // 5 minutes
@@ -1321,32 +1326,17 @@ async function checkPendingBetsForSettlement() {
       .select('*')
       .eq('user_id', currentUser.id)
       .eq('status', 'pending');
-    
+
     if (!bets?.length) return;
-    
+
+    const finishedGames = await fetchAllFinishedGames(3);
+
     for (const bet of bets) {
       if (!bet.selections) continue;
-      
-      for (const sel of bet.selections) {
-        if (sel.gameId) {
-          try {
-            // Fetch game data from ESPN
-            const gameData = await fetch(`https://site.api.espn.com/apis/site/v2/sports/events/${sel.gameId}`).then(r => r.json()).catch(() => ({}));
-            
-            if (gameData.events && gameData.events.length > 0) {
-              const ev = gameData.events[0];
-              const status = ev.status?.type;
-              const isFinal = status?.state === 'post';
-              
-              // If game is finished and bet is still pending, settle it
-              if (isFinal) {
-                await settleBetFromResult(bet.id, bet.selections, ev);
-              }
-            }
-          } catch(e) {
-            console.error('Error checking pending bet:', e);
-          }
-        }
+      const allGameIds = bet.selections.map(s => String(s.gameId));
+      const allFinished = allGameIds.every(id => finishedGames.has(id));
+      if (allFinished) {
+        await settleBetFromResult(bet.id, bet.selections, null);
       }
     }
   } catch(e) {
@@ -1551,14 +1541,14 @@ async function crashStart() {
   crashState = 'running';
   crashMult = 1.0;
   // Aviator-style crash distribution — same formula used by Spribe/Aviator
-  // House edge: 3% of rounds crash at exactly 1.00x (instant)
-  // Other rounds: crash = 97 / (100 * rand) — gives realistic distribution:
-  //   ~36% crash below 1.5x, ~53% below 2x, ~19% above 5x, ~9% above 10x
+  // House edge: 1% of rounds crash at exactly 1.00x (instant)
+  // Other rounds: crash = 99 / (100 * rand) — gives realistic distribution:
+  //   ~35% crash below 1.5x, ~52% below 2x, ~18% above 5x, ~8% above 10x
   const r = Math.random();
-  if (r < 0.03) {
-    crashTarget = 1.00; // 3% house edge rounds (globally competitive)
+  if (r < 0.01) {
+    crashTarget = 1.00; // 1% house edge rounds
   } else {
-    crashTarget = Math.max(1.01, Math.min(1000, +(97 / (100 * r)).toFixed(2)));
+    crashTarget = Math.max(1.01, Math.min(1000, +(99 / (100 * r)).toFixed(2)));
   }
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
@@ -1761,12 +1751,7 @@ async function checkAndSettlePendingBets() {
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
   }
 
-  const LEAGUES = [
-    'soccer/eng.1','soccer/eng.fa','soccer/eng.league_cup',
-    'soccer/esp.1','soccer/ita.1','soccer/ger.1','soccer/fra.1',
-    'soccer/uefa.champions','soccer/uefa.europa','soccer/uefa.europaconf',
-    'basketball/nba','baseball/mlb','hockey/nhl',
-  ];
+  const LEAGUES = ALL_LEAGUES;
 
   const fetches = [];
   for (const league of LEAGUES) {
