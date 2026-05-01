@@ -1096,7 +1096,7 @@ const ALL_LEAGUES = [
 ];
 
 // Fetch all finished games across all leagues for a date range
-// Returns Map of gameId -> { result, homeScore, awayScore, homeTeam, awayTeam }
+// Returns Map<gameId, { result, homeScore, awayScore }>
 async function fetchAllFinishedGames(daysBack) {
   const dates = [];
   for (let i = -(daysBack||3); i <= 0; i++) {
@@ -1106,7 +1106,10 @@ async function fetchAllFinishedGames(daysBack) {
   const fetches = [];
   for (const league of ALL_LEAGUES) {
     for (const date of dates) {
-      fetches.push(fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100').then(r=>r.json()).catch(()=>({})));
+      fetches.push(
+        fetch('https://site.api.espn.com/apis/site/v2/sports/' + league + '/scoreboard?dates=' + date + '&limit=100')
+          .then(r=>r.json()).catch(()=>({}))
+      );
     }
   }
   const responses = await Promise.all(fetches);
@@ -1132,6 +1135,7 @@ async function fetchAllFinishedGames(daysBack) {
 
 let activeGamePolls = {}; // gameId -> intervalId
 
+// watchForResult — polls every 60s, settles when all legs are finished
 async function watchForResult(gameId, betId, selectionType, allSelections) {
   if (activeGamePolls[gameId]) return;
 
@@ -1140,127 +1144,103 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
       const finishedGames = await fetchAllFinishedGames(2);
       const allGameIds = allSelections.map(s=>String(s.gameId));
       const allFinished = allGameIds.every(id => finishedGames.has(id));
-      if (!allFinished) return; // not all legs done yet
+      if (!allFinished) return;
 
       clearInterval(poll);
       delete activeGamePolls[gameId];
-
-      // Evaluate all legs
-      let allCorrect = true;
-      for (const sel of allSelections) {
-        const game = finishedGames.get(String(sel.gameId));
-        if (!game || sel.type !== game.result) { allCorrect = false; break; }
-      }
-
-      // Fetch fresh bet state — guard against double-settle
-      const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
-      if (!betData || betData.status !== 'pending') return;
-
-      const outcome = allCorrect ? 'won' : 'lost';
-      const payout = allCorrect ? betData.potential_payout : 0;
-
-      const { error, data: updated } = await sb.from('bets')
-        .update({ status: outcome, payout })
-        .eq('id', betId).eq('status','pending').select();
-
-      if (error || !updated?.length) return;
-
-      if (outcome === 'won') {
-        const newBal = userBalance + payout;
-        await updateBalance(newBal, 'bet_win', payout, allSelections.length + '-leg accumulator won');
-        showToast('🎉 Bet WON! +KSH ' + (payout - betData.stake).toLocaleString() + ' credited!');
-        const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
-        if (histNav) {
-          histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>';
-          setTimeout(()=>{ if(histNav) histNav.textContent='📋 History'; }, 10000);
-        }
-      } else {
-        const { data: prof } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
-        await sb.from('transactions').insert({ user_id: currentUser.id, type:'bet_loss', amount: betData.stake, label: allSelections.length + '-leg accumulator lost', balance_after: prof?.balance||userBalance });
-        showToast('😔 Bet settled as lost');
-      }
-
-      placedGameIds.delete(gameId);
-      renderSports();
-      if (document.getElementById('tab-history').style.display !== 'none') renderHistory();
+      await doSettle(betId, allSelections, finishedGames);
     } catch(e) {
       console.error('Poll error:', e);
     }
-  }, 60000); // Check every 60 seconds
+  }, 60000);
 
   activeGamePolls[gameId] = poll;
 }
 
-async function settleBetFromResult(betId, allSelections, espnEvent) {
+// doSettle — the single place that writes to Supabase. Called by both poll and resume.
+// Uses an atomic .eq('status','pending') guard to prevent any double-settle.
+const _settlingBets = new Set(); // local in-flight guard
+async function doSettle(betId, allSelections, finishedGames) {
+  // In-flight guard — prevents concurrent calls for same bet
+  if (_settlingBets.has(betId)) return;
+  _settlingBets.add(betId);
   try {
-    const { data: betData } = await sb.from('bets').select('*').eq('id', betId).single();
-    if (!betData || betData.status !== 'pending') return;
-
-    const gameIds = allSelections.map(s => s.gameId).filter(Boolean);
-    if (!gameIds.length) return;
-
-    // Use fetchAllFinishedGames — the /events/{id} endpoint is broken
-    const finishedMap = await fetchAllFinishedGames(3);
-    const gameResults = {};
-    let allFinished = true;
-
-    for (const gameId of gameIds) {
-      const game = finishedMap.get(String(gameId));
-      if (!game) { allFinished = false; continue; }
-      gameResults[gameId] = game;
+    // Evaluate all legs
+    let allCorrect = true;
+    for (const sel of allSelections) {
+      const game = finishedGames.get(String(sel.gameId));
+      if (!game || sel.type !== game.result) { allCorrect = false; break; }
     }
 
-    if (!allFinished) return;
+    const outcome = allCorrect ? 'won' : 'lost';
 
-    const allCorrect = allSelections.every(sel => {
-      const r = gameResults[sel.gameId];
-      return r && sel.type === r.result;
-    });
+    // Atomic update — only succeeds if bet is still pending in DB
+    const { data: updated, error } = await sb.from('bets')
+      .update({ status: outcome, payout: allCorrect ? 0 : 0 }) // temp, real payout set below
+      .eq('id', betId)
+      .eq('status', 'pending')
+      .select('*');
 
-    const won = allCorrect;
-    const payout = won ? betData.potential_payout : 0;
+    if (error || !updated?.length) {
+      // Either already settled or a DB error — either way, bail
+      return;
+    }
 
-    const { error: updateError } = await sb.from('bets')
-      .update({ status: won ? 'won' : 'lost', payout })
-      .eq('id', betId).eq('status','pending');
+    const betData = updated[0];
+    const payout = allCorrect ? betData.potential_payout : 0;
 
-    if (updateError) { console.error('Error updating bet:', updateError); return; }
+    // Now write correct payout
+    await sb.from('bets').update({ payout }).eq('id', betId);
 
-    if (won) {
+    if (allCorrect) {
       const newBal = userBalance + payout;
-      await updateBalance(newBal, 'bet_win', payout, `${allSelections.length}-leg accumulator won`);
-      showToast(`🎉 Accumulator WON! +KSH ${(payout - betData.stake).toLocaleString()} credited!`);
+      await updateBalance(newBal, 'bet_win', payout, allSelections.length + '-leg accumulator won');
+      showToast('🎉 Bet WON! +KSH ' + (payout - betData.stake).toLocaleString() + ' credited!');
+      const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
+      if (histNav) {
+        histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>';
+        setTimeout(()=>{ if(histNav) histNav.textContent='📋 History'; }, 10000);
+      }
     } else {
+      const { data: prof } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
       await sb.from('transactions').insert({
         user_id: currentUser.id, type: 'bet_loss', amount: betData.stake,
-        label: `${allSelections.length}-leg accumulator lost`, balance_after: userBalance
+        label: allSelections.length + '-leg accumulator lost',
+        balance_after: prof?.balance || userBalance
       });
-      showToast(`😔 Accumulator settled — all ${allSelections.length} legs completed`);
+      showToast('😔 Bet settled as lost');
     }
 
-    if (espnEvent) placedGameIds.delete(espnEvent.id);
-    renderSports();
+    // Clean up game tracking
+    allSelections.forEach(s => placedGameIds.delete(s.gameId));
     betHistoryCache = null;
     transactionCache = null;
+    renderSports();
     if (document.getElementById('tab-history')?.style.display !== 'none') renderHistory();
     if (document.getElementById('tab-wallet')?.style.display !== 'none') renderWallet();
-    const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
-    if (histNav && won) {
-      histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700">WIN!</span>';
-      setTimeout(() => { if(histNav) histNav.textContent = '📋 History'; }, 10000);
-    }
   } catch(e) {
     console.error('Error settling bet:', e);
+  } finally {
+    _settlingBets.delete(betId);
   }
 }
 
-// Load user's pending bets on login and start watching for results
+// settleBetFromResult — legacy entry point, now delegates to doSettle
+async function settleBetFromResult(betId, allSelections, espnEvent) {
+  const finishedGames = await fetchAllFinishedGames(3);
+  const gameIds = allSelections.map(s => s.gameId).filter(Boolean);
+  const allFinished = gameIds.every(id => finishedGames.has(String(id)));
+  if (!allFinished) return;
+  await doSettle(betId, allSelections, finishedGames);
+}
+
+// resumePendingBets — runs once on login
 async function resumePendingBets() {
   const { data: bets } = await sb.from('bets')
     .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
   if (!bets?.length) return;
 
-  // Restore placedGameIds so user can't double-bet
+  // Restore placedGameIds so user can't double-bet on same game
   for (const bet of bets) {
     if (!bet.selections) continue;
     for (const sel of bet.selections) {
@@ -1268,19 +1248,22 @@ async function resumePendingBets() {
     }
   }
 
-  // One bulk fetch — settle finished bets immediately, watch the rest
+  // One bulk ESPN fetch — settle finished bets immediately, watch the rest
   const finishedGames = await fetchAllFinishedGames(3);
 
   for (const bet of bets) {
-    if (!bet.selections) continue;
+    if (!bet.selections?.length) continue;
     const allGameIds = bet.selections.map(s => String(s.gameId));
     const allFinished = allGameIds.every(id => finishedGames.has(id));
 
     if (allFinished) {
-      await settleBetFromResult(bet.id, bet.selections, null);
+      await doSettle(bet.id, bet.selections, finishedGames);
     } else {
-      const firstGameId = bet.selections[0]?.gameId;
-      if (firstGameId) watchForResult(firstGameId, bet.id, bet.selections[0]?.type, bet.selections);
+      // Watch only the first leg's gameId as trigger — poll checks all legs
+      const firstId = bet.selections[0]?.gameId;
+      if (firstId && !activeGamePolls[firstId]) {
+        watchForResult(firstId, bet.id, bet.selections[0]?.type, bet.selections);
+      }
     }
   }
 
@@ -1289,19 +1272,18 @@ async function resumePendingBets() {
   }
 }
 
-// Periodic fallback — catches any bets missed by the poll
+// Periodic fallback — catches any bets the poll missed
 async function checkPendingBetsForSettlement() {
   try {
     const { data: bets } = await sb.from('bets')
       .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
     if (!bets?.length) return;
-
     const finishedGames = await fetchAllFinishedGames(3);
     for (const bet of bets) {
-      if (!bet.selections) continue;
+      if (!bet.selections?.length) continue;
       const allGameIds = bet.selections.map(s => String(s.gameId));
       if (allGameIds.every(id => finishedGames.has(id))) {
-        await settleBetFromResult(bet.id, bet.selections, null);
+        await doSettle(bet.id, bet.selections, finishedGames);
       }
     }
   } catch(e) {
