@@ -527,7 +527,7 @@ function showTab(t) {
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
-  if (t==='history') renderHistory();
+  if (t==='history') { betHistoryCache = null; renderHistory(); }
 }
 
 // ─── TOAST ───
@@ -1267,6 +1267,12 @@ async function resumePendingBets() {
     }
   }
 
+  // After settling, always refresh balance and history so UI reflects new statuses
+  await refreshBalance();
+  betHistoryCache = null;
+  if (document.getElementById('tab-history')?.style.display !== 'none') renderHistory();
+  if (document.getElementById('tab-wallet')?.style.display !== 'none') renderWallet();
+
   if (!window.pendingBetsCheckInterval) {
     window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000);
   }
@@ -1870,20 +1876,15 @@ async function renderHistory() {
   const betEl = document.getElementById('bet-list');
   if (!betEl) return;
 
-  // Use cache if available and recent, but always allow manual refresh
-  let bets = null;
-  if (betHistoryCache && Date.now() - betHistoryCacheTime < CACHE_DURATION) {
-    bets = betHistoryCache;
-  } else {
-    const { data } = await sb.from('bets')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    bets = data || [];
-    betHistoryCache = bets;
-    betHistoryCacheTime = Date.now();
-  }
+  // Always fetch fresh from Supabase — never serve stale pending statuses
+  const { data } = await sb.from('bets')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  const bets = data || [];
+  betHistoryCache = bets;
+  betHistoryCacheTime = Date.now();
 
   if (!bets?.length) {
     betEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
