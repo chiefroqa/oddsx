@@ -337,7 +337,7 @@ let transactionCache = null;
 let transactionCacheTime = 0;
 let betHistoryCache = null;
 let betHistoryCacheTime = 0;
-const CACHE_DURATION = 30000; // 30 seconds
+const CACHE_DURATION = 60000; // 60 seconds
 
 function getCachedGameStatus(gameId) {
   const cached = gameStatusCache[gameId];
@@ -527,7 +527,7 @@ function showTab(t) {
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
-  if (t==='history') { betHistoryCache = null; renderHistory(); }
+  if (t==='history') renderHistory();
 }
 
 // ─── TOAST ───
@@ -1235,12 +1235,13 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
 }
 
 // resumePendingBets — runs once on login
+// ESPN fetch is deferred so it never blocks app startup or UI rendering
 async function resumePendingBets() {
   const { data: bets } = await sb.from('bets')
     .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
   if (!bets?.length) return;
 
-  // Restore placedGameIds so user can't double-bet on same game
+  // Restore placedGameIds immediately (fast — no network call)
   for (const bet of bets) {
     if (!bet.selections) continue;
     for (const sel of bet.selections) {
@@ -1248,30 +1249,27 @@ async function resumePendingBets() {
     }
   }
 
-  // One bulk ESPN fetch — settle finished bets immediately, watch the rest
-  const finishedGames = await fetchAllFinishedGames(3);
-
-  for (const bet of bets) {
-    if (!bet.selections?.length) continue;
-    const allGameIds = bet.selections.map(s => String(s.gameId));
-    const allFinished = allGameIds.every(id => finishedGames.has(id));
-
-    if (allFinished) {
-      await doSettle(bet.id, bet.selections, finishedGames);
-    } else {
-      // Watch only the first leg's gameId as trigger — poll checks all legs
-      const firstId = bet.selections[0]?.gameId;
-      if (firstId && !activeGamePolls[firstId]) {
-        watchForResult(firstId, bet.id, bet.selections[0]?.type, bet.selections);
+  // Defer the heavy ESPN fetch — run after a short delay so the UI renders first
+  setTimeout(async () => {
+    try {
+      const finishedGames = await fetchAllFinishedGames(3);
+      for (const bet of bets) {
+        if (!bet.selections?.length) continue;
+        const allGameIds = bet.selections.map(s => String(s.gameId));
+        const allFinished = allGameIds.every(id => finishedGames.has(id));
+        if (allFinished) {
+          await doSettle(bet.id, bet.selections, finishedGames);
+        } else {
+          const firstId = bet.selections[0]?.gameId;
+          if (firstId && !activeGamePolls[firstId]) {
+            watchForResult(firstId, bet.id, bet.selections[0]?.type, bet.selections);
+          }
+        }
       }
+    } catch(e) {
+      console.error('resumePendingBets background error:', e);
     }
-  }
-
-  // After settling, always refresh balance and history so UI reflects new statuses
-  await refreshBalance();
-  betHistoryCache = null;
-  if (document.getElementById('tab-history')?.style.display !== 'none') renderHistory();
-  if (document.getElementById('tab-wallet')?.style.display !== 'none') renderWallet();
+  }, 3000); // 3 second delay — app is fully rendered before ESPN calls start
 
   if (!window.pendingBetsCheckInterval) {
     window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000);
@@ -1283,7 +1281,7 @@ async function checkPendingBetsForSettlement() {
   try {
     const { data: bets } = await sb.from('bets')
       .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
-    if (!bets?.length) return;
+    if (!bets?.length) return; // No pending bets — skip ESPN entirely, no network calls
     const finishedGames = await fetchAllFinishedGames(3);
     for (const bet of bets) {
       if (!bet.selections?.length) continue;
@@ -1876,15 +1874,21 @@ async function renderHistory() {
   const betEl = document.getElementById('bet-list');
   if (!betEl) return;
 
-  // Always fetch fresh from Supabase — never serve stale pending statuses
-  const { data } = await sb.from('bets')
-    .select('*')
-    .eq('user_id', currentUser.id)
-    .order('created_at', { ascending: false })
-    .limit(50);
-  const bets = data || [];
-  betHistoryCache = bets;
-  betHistoryCacheTime = Date.now();
+  // Use 60s cache for fast tab switches — manual Refresh button busts it
+  const HISTORY_CACHE_MS = 60000;
+  let bets = null;
+  if (betHistoryCache && Date.now() - betHistoryCacheTime < HISTORY_CACHE_MS) {
+    bets = betHistoryCache; // instant — no network call
+  } else {
+    const { data } = await sb.from('bets')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    bets = data || [];
+    betHistoryCache = bets;
+    betHistoryCacheTime = Date.now();
+  }
 
   if (!bets?.length) {
     betEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
