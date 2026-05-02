@@ -1,0 +1,5 @@
+[functions.settle-bets]
+verify_jwt = false
+
+[functions.settle-bets.cron]
+schedule = "*/10 * * * *"
