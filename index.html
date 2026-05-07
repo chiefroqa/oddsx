@@ -188,8 +188,17 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     </div>
     <div id="signup-form" style="display:none">
       <div class="field"><label>Full Name</label><input type="text" id="signup-name" placeholder="John Kamau"></div>
+      <div class="field">
+        <label>Phone Number</label>
+        <input type="tel" id="signup-phone" placeholder="Phone Number (e.g. 0712345678)" maxlength="13">
+        <div id="signup-phone-error" style="color:#ff4757;font-size:11px;margin-top:4px;display:none"></div>
+      </div>
       <div class="field"><label>Email</label><input type="email" id="signup-email" placeholder="you@email.com"></div>
       <div class="field"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="signup-whatsapp" checked style="width:16px;height:16px;accent-color:var(--accent)">
+        ✅ Receive bet alerts on WhatsApp
+      </label>
       <button class="auth-btn" onclick="signUp()">Create Account</button>
       <div class="divider">or</div>
       <button class="google-btn" onclick="signInGoogle()">
@@ -337,7 +346,7 @@ let transactionCache = null;
 let transactionCacheTime = 0;
 let betHistoryCache = null;
 let betHistoryCacheTime = 0;
-const CACHE_DURATION = 60000; // 60 seconds
+const CACHE_DURATION = 30000; // 30 seconds
 
 function getCachedGameStatus(gameId) {
   const cached = gameStatusCache[gameId];
@@ -384,10 +393,14 @@ async function loadUser(user) {
     await sb.from('profiles').insert({
       id: user.id, email: user.email,
       full_name: user.user_metadata?.full_name || '',
+      phone: user.user_metadata?.phone || null,
+      whatsapp_optin: true,
       balance: 1000
     });
     ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
   }
+  // Cache phone on window so deposit modal can pre-fill it
+  window.userPhone = profile?.phone || null;
   userBalance = profile?.balance || 0;
   const initials = (profile?.full_name || user.email || '?')[0].toUpperCase();
   document.getElementById('avatar-init').textContent = initials;
@@ -451,22 +464,59 @@ async function signIn() {
   btn.disabled = false; btn.textContent = 'Sign In';
 }
 
+function normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, '');
+  if (/^07\d{8}$/.test(digits)) return '254' + digits.slice(1);
+  if (/^01\d{8}$/.test(digits)) return '254' + digits.slice(1);
+  if (/^2547\d{8}$/.test(digits)) return digits;
+  if (/^2541\d{8}$/.test(digits)) return digits;
+  return null;
+}
+
 async function signUp() {
   const name = document.getElementById('signup-name').value.trim();
+  const phoneRaw = document.getElementById('signup-phone').value.trim();
   const email = document.getElementById('signup-email').value.trim();
   const password = document.getElementById('signup-password').value;
-  if (!name || !email || !password) return showAuthError('Please fill in all fields');
+  const whatsappOptin = document.getElementById('signup-whatsapp').checked;
+  const phoneErr = document.getElementById('signup-phone-error');
+
+  // Reset phone error
+  phoneErr.style.display = 'none'; phoneErr.textContent = '';
+
+  if (!name || !phoneRaw || !email || !password) return showAuthError('Please fill in all fields');
   if (!email.includes('@')) return showAuthError('Enter a valid email address');
   if (password.length < 6) return showAuthError('Password must be at least 6 characters');
+
+  const phone = normalizePhone(phoneRaw);
+  if (!phone) {
+    phoneErr.textContent = 'Enter a valid Kenyan number (07XX, 01XX, or 2547XX)';
+    phoneErr.style.display = 'block';
+    return;
+  }
+
   const btn = document.querySelector('#signup-form .auth-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating account...';
   clearAuthMessages();
   try {
-    const { error } = await withTimeout(sb.auth.signUp({
+    const { data, error } = await withTimeout(sb.auth.signUp({
       email, password, options: { data: { full_name: name } }
     }));
-    if (error) showAuthError(error.message);
-    else showAuthSuccess('Account created! You can now sign in.');
+    if (error) { showAuthError(error.message); }
+    else {
+      // Save phone + whatsapp_optin to profiles
+      if (data?.user) {
+        await sb.from('profiles').upsert({
+          id: data.user.id,
+          email,
+          full_name: name,
+          phone,
+          whatsapp_optin: whatsappOptin,
+          balance: 1000
+        }, { onConflict: 'id' });
+      }
+      showAuthSuccess('Account created! You can now sign in.');
+    }
   } catch(e) { showAuthError(e.message); }
   btn.disabled = false; btn.textContent = 'Create Account';
 }
@@ -1235,13 +1285,12 @@ async function settleBetFromResult(betId, allSelections, espnEvent) {
 }
 
 // resumePendingBets — runs once on login
-// ESPN fetch is deferred so it never blocks app startup or UI rendering
 async function resumePendingBets() {
   const { data: bets } = await sb.from('bets')
     .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
   if (!bets?.length) return;
 
-  // Restore placedGameIds immediately (fast — no network call)
+  // Restore placedGameIds so user can't double-bet on same game
   for (const bet of bets) {
     if (!bet.selections) continue;
     for (const sel of bet.selections) {
@@ -1249,27 +1298,24 @@ async function resumePendingBets() {
     }
   }
 
-  // Defer the heavy ESPN fetch — run after a short delay so the UI renders first
-  setTimeout(async () => {
-    try {
-      const finishedGames = await fetchAllFinishedGames(3);
-      for (const bet of bets) {
-        if (!bet.selections?.length) continue;
-        const allGameIds = bet.selections.map(s => String(s.gameId));
-        const allFinished = allGameIds.every(id => finishedGames.has(id));
-        if (allFinished) {
-          await doSettle(bet.id, bet.selections, finishedGames);
-        } else {
-          const firstId = bet.selections[0]?.gameId;
-          if (firstId && !activeGamePolls[firstId]) {
-            watchForResult(firstId, bet.id, bet.selections[0]?.type, bet.selections);
-          }
-        }
+  // One bulk ESPN fetch — settle finished bets immediately, watch the rest
+  const finishedGames = await fetchAllFinishedGames(3);
+
+  for (const bet of bets) {
+    if (!bet.selections?.length) continue;
+    const allGameIds = bet.selections.map(s => String(s.gameId));
+    const allFinished = allGameIds.every(id => finishedGames.has(id));
+
+    if (allFinished) {
+      await doSettle(bet.id, bet.selections, finishedGames);
+    } else {
+      // Watch only the first leg's gameId as trigger — poll checks all legs
+      const firstId = bet.selections[0]?.gameId;
+      if (firstId && !activeGamePolls[firstId]) {
+        watchForResult(firstId, bet.id, bet.selections[0]?.type, bet.selections);
       }
-    } catch(e) {
-      console.error('resumePendingBets background error:', e);
     }
-  }, 3000); // 3 second delay — app is fully rendered before ESPN calls start
+  }
 
   if (!window.pendingBetsCheckInterval) {
     window.pendingBetsCheckInterval = setInterval(checkPendingBetsForSettlement, 300000);
@@ -1281,7 +1327,7 @@ async function checkPendingBetsForSettlement() {
   try {
     const { data: bets } = await sb.from('bets')
       .select('*').eq('user_id', currentUser.id).eq('status', 'pending');
-    if (!bets?.length) return; // No pending bets — skip ESPN entirely, no network calls
+    if (!bets?.length) return;
     const finishedGames = await fetchAllFinishedGames(3);
     for (const bet of bets) {
       if (!bet.selections?.length) continue;
@@ -1874,11 +1920,10 @@ async function renderHistory() {
   const betEl = document.getElementById('bet-list');
   if (!betEl) return;
 
-  // Use 60s cache for fast tab switches — manual Refresh button busts it
-  const HISTORY_CACHE_MS = 60000;
+  // Use cache if available and recent, but always allow manual refresh
   let bets = null;
-  if (betHistoryCache && Date.now() - betHistoryCacheTime < HISTORY_CACHE_MS) {
-    bets = betHistoryCache; // instant — no network call
+  if (betHistoryCache && Date.now() - betHistoryCacheTime < CACHE_DURATION) {
+    bets = betHistoryCache;
   } else {
     const { data } = await sb.from('bets')
       .select('*')
@@ -1949,7 +1994,19 @@ async function renderHistory() {
 }
 
 // ─── DEPOSIT / WITHDRAW ───
-function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+  // Pre-fill deposit phone from saved profile
+  if (id === 'deposit-modal' && window.userPhone) {
+    const display = window.userPhone.startsWith('254') ? '0' + window.userPhone.slice(3) : window.userPhone;
+    const phoneInput = document.getElementById('mpesa-phone');
+    if (phoneInput && !phoneInput.value) {
+      phoneInput.value = display;
+      const preview = document.getElementById('phone-preview');
+      if (preview) preview.textContent = display;
+    }
+  }
+}
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function openWithdrawModal() {
   document.getElementById('withdraw-balance-note').textContent = `Available: KSH ${userBalance.toLocaleString()}`;
@@ -1959,6 +2016,19 @@ function setAmount(n) {
   document.getElementById('deposit-amount').value = n;
   document.querySelectorAll('.amount-chip').forEach(el => el.classList.toggle('active', parseInt(el.textContent.replace(',',''))===n));
 }
+// Pre-fill deposit phone from saved profile phone
+(function() {
+  const depositModal = document.getElementById('deposit-modal') || document.getElementById('mpesa-phone')?.closest?.('.modal');
+  const phoneInput = document.getElementById('mpesa-phone');
+  if (phoneInput && window.userPhone) {
+    // Convert 2547XXXXXXXX back to 07XXXXXXXX for display
+    const display = window.userPhone.startsWith('254') ? '0' + window.userPhone.slice(3) : window.userPhone;
+    phoneInput.value = display;
+    const preview = document.getElementById('phone-preview');
+    if (preview) preview.textContent = display;
+  }
+})();
+
 document.getElementById('mpesa-phone').addEventListener('input', function() {
   document.getElementById('phone-preview').textContent = this.value || 'your phone';
 });
