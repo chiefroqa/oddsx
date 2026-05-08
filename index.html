@@ -255,12 +255,53 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div class="betslip" id="betslip" style="display:none">
     <div class="slip-count" id="slip-cnt">0</div>
     <div style="flex:1">
-      <div style="font-size:11px;font-weight:600;color:var(--text)">Accumulator</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text)" id="slip-type-label">Accumulator</div>
       <div class="potential" id="pot-return"></div>
     </div>
     <span style="font-size:11px;color:var(--muted)">KSH</span>
     <input class="slip-input" type="number" id="stake" value="200" min="50" step="50" oninput="calcReturn()">
     <button class="place-btn" id="place-btn" onclick="placeBet()">Place Bet</button>
+    <button class="place-btn" id="challenge-btn" onclick="createChallenge()" style="background:var(--gold);color:#000;display:none" title="Challenge a friend">⚔️</button>
+  </div>
+</div>
+
+<!-- P2P CHALLENGE MODAL -->
+<div class="modal-overlay" id="challenge-modal" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <button class="modal-close" onclick="closeModal('challenge-modal')" style="position:absolute;top:14px;right:14px">✕</button>
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:28px;margin-bottom:6px">⚔️</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700">Challenge a Friend</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Your friend takes the other side</div>
+    </div>
+    <div id="challenge-preview" style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">Your Stake (KSH)</label>
+      <input type="number" id="challenge-stake" value="200" min="1" step="50"
+        style="width:100%;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-size:16px;font-weight:700;padding:10px 14px;outline:none"
+        oninput="updateChallengePreview()">
+    </div>
+    <div style="background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--muted)">
+      💰 10% house cut on winnings · Winner takes <span id="challenge-winner-takes" style="color:var(--gold);font-weight:700">—</span>
+    </div>
+    <button class="modal-btn" onclick="confirmChallenge()" id="confirm-challenge-btn">⚔️ Create Challenge & Share</button>
+  </div>
+</div>
+
+<!-- P2P ACCEPT MODAL -->
+<div class="modal-overlay" id="accept-modal" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:28px;margin-bottom:6px">⚔️</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700" id="accept-title">Challenge</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px" id="accept-sub"></div>
+    </div>
+    <div id="accept-preview" style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
+    <div style="background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--muted)">
+      💰 Winner takes <span id="accept-winner-takes" style="color:var(--gold);font-weight:700">—</span> (10% house cut applied)
+    </div>
+    <button class="modal-btn" onclick="acceptChallenge()" id="accept-challenge-btn">✅ Accept Challenge</button>
+    <button onclick="closeModal('accept-modal')" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:10px;cursor:pointer;margin-top:6px">Decline</button>
   </div>
 </div>
 
@@ -391,9 +432,14 @@ async function init() {
     renderMines();
   }
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) await loadUser(session.user);
+    if (session) {
+      await loadUser(session.user);
+      checkForChallenge(); // Check if user arrived via a challenge link
+    }
     else currentUser = null; // Stay in guest mode, don't hide app
   });
+  // Also check for challenge link on initial load (guest viewing challenge)
+  setTimeout(checkForChallenge, 1500);
 }
 
 async function loadUser(user) {
@@ -1086,6 +1132,16 @@ function selectOdd(gameId, type, label, odds, leagueSlug, gameDate) {
   const n = Object.keys(selections).length;
   document.getElementById('slip-cnt').textContent = n;
   document.getElementById('betslip').style.display = n > 0 ? 'flex' : 'none';
+  // Show challenge button only for single game selections (can't P2P an accumulator)
+  const challengeBtn = document.getElementById('challenge-btn');
+  const slipLabel = document.getElementById('slip-type-label');
+  if (n === 1) {
+    challengeBtn.style.display = 'inline-flex';
+    slipLabel.textContent = 'Single Bet';
+  } else {
+    challengeBtn.style.display = 'none';
+    slipLabel.textContent = 'Accumulator';
+  }
   calcReturn();
   renderSports();
 }
@@ -1106,6 +1162,266 @@ function calcReturn() {
   if (!bets.length) return;
   const mult = bets.reduce((a, b) => a * oddsToDecimal(b.odds), 1);
   document.getElementById('pot-return').textContent = `Potential: KSH ${Math.round(stake * mult).toLocaleString()}`;
+}
+
+// ── P2P CHALLENGE SYSTEM ──
+let activeChallengeData = null;
+let pendingAcceptChallenge = null;
+
+function createChallenge() {
+  if (!currentUser) { showToast('Sign in to create a challenge'); showAuthScreen(); return; }
+  const bets = Object.values(selections);
+  if (bets.length !== 1) { showToast('Select exactly one game to challenge'); return; }
+  const bet = bets[0];
+  const stake = parseFloat(document.getElementById('stake').value) || 200;
+  activeChallengeData = { bet, stake };
+  document.getElementById('challenge-stake').value = stake;
+  updateChallengePreview();
+  openModal('challenge-modal');
+}
+
+function getOppositeLabel(bet) {
+  if (bet.type === 'home') return bet.label.replace(' Win', '') + ' — Draw or Away Win';
+  if (bet.type === 'away') return bet.label.replace(' Win', '') + ' — Draw or Home Win';
+  if (bet.type === 'draw') return 'Either team wins (no draw)';
+  return 'Other side';
+}
+
+function updateChallengePreview() {
+  if (!activeChallengeData) return;
+  const { bet } = activeChallengeData;
+  const stake = parseFloat(document.getElementById('challenge-stake').value) || 0;
+  const pot = stake * 2;
+  const winnerTakes = Math.round(pot * 0.9);
+  document.getElementById('challenge-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  document.getElementById('challenge-preview').innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">${bet.label}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Your friend takes: <span style="color:var(--text)">${getOppositeLabel(bet)}</span></div>
+    <div style="font-size:11px;color:var(--muted)">Each stakes: <span style="color:var(--gold);font-weight:700">KSH ${stake.toLocaleString()}</span></div>`;
+}
+
+async function confirmChallenge() {
+  if (!currentUser) return;
+  const { bet } = activeChallengeData;
+  const stake = parseFloat(document.getElementById('challenge-stake').value) || 0;
+  if (stake < 1) return showToast('Enter a valid stake');
+  if (stake > userBalance) return showToast('Insufficient balance');
+
+  const btn = document.getElementById('confirm-challenge-btn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+
+  try {
+    // Deduct stake from challenger immediately (escrow)
+    const newBal = userBalance - stake;
+    await updateBalance(newBal, 'bet_loss', stake, 'P2P Challenge created (escrow)');
+
+    // Get challenger display name
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Someone';
+
+    // Create challenge record
+    const { data: challenge, error } = await sb.from('p2p_challenges').insert({
+      challenger_id: currentUser.id,
+      challenger_name: name,
+      game_id: bet.gameId,
+      league_slug: bet.leagueSlug,
+      game_date: bet.gameDate,
+      challenger_pick: bet.type,
+      challenger_label: bet.label,
+      stake,
+      status: 'open',
+      expires_at: bet.gameDate,
+    }).select().single();
+
+    if (error) throw error;
+
+    // Generate WhatsApp share link
+    const challengeUrl = window.location.origin + '?challenge=' + challenge.id;
+    const oppositeLabel = getOppositeLabel(bet);
+    const msg = encodeURIComponent(
+      `⚔️ ${name} has challenged you on OddsX!
+
+` +
+      `🏆 ${bet.label}
+` +
+      `💰 Stake: KSH ${stake.toLocaleString()} each
+` +
+      `🎯 Your side: ${oppositeLabel}
+
+` +
+      `Accept here 👉 ${challengeUrl}`
+    );
+
+    closeModal('challenge-modal');
+    selections = {};
+    document.getElementById('betslip').style.display = 'none';
+    document.getElementById('slip-cnt').textContent = '0';
+    renderSports();
+
+    // Open WhatsApp
+    window.open('https://wa.me/?text=' + msg, '_blank');
+    showToast('Challenge created! Share the link with your friend.');
+
+  } catch(e) {
+    showToast('Error creating challenge: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '⚔️ Create Challenge & Share';
+}
+
+async function checkForChallenge() {
+  const params = new URLSearchParams(window.location.search);
+  const challengeId = params.get('challenge');
+  if (!challengeId) return;
+  // Clean URL
+  window.history.replaceState({}, '', window.location.pathname);
+  // Load challenge
+  const { data: challenge } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
+  if (!challenge) return showToast('Challenge not found or expired');
+  if (challenge.status !== 'open') return showToast('This challenge has already been accepted');
+  pendingAcceptChallenge = challenge;
+  showAcceptModal(challenge);
+}
+
+function showAcceptModal(challenge) {
+  const pot = challenge.stake * 2;
+  const winnerTakes = Math.round(pot * 0.9);
+  const oppositeLabel = challenge.challenger_pick === 'home' ? 'Draw or Away Win' :
+    challenge.challenger_pick === 'away' ? 'Draw or Home Win' : 'Either team wins';
+
+  document.getElementById('accept-title').textContent = `${challenge.challenger_name} challenges you!`;
+  document.getElementById('accept-sub').textContent = `Stake: KSH ${challenge.stake.toLocaleString()} each`;
+  document.getElementById('accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  document.getElementById('accept-preview').innerHTML = `
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Their pick</div>
+      <div style="font-weight:700;color:var(--accent)">${challenge.challenger_label}</div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Your side</div>
+      <div style="font-weight:700;color:var(--gold)">${oppositeLabel}</div>
+    </div>`;
+  openModal('accept-modal');
+}
+
+async function acceptChallenge() {
+  if (!currentUser) { showToast('Sign in to accept this challenge'); showAuthScreen(); return; }
+  const challenge = pendingAcceptChallenge;
+  if (!challenge) return;
+  if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
+  if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
+
+  const btn = document.getElementById('accept-challenge-btn');
+  btn.disabled = true; btn.textContent = 'Accepting...';
+
+  try {
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Challenger';
+
+    // Deduct stake from acceptor (escrow)
+    const newBal = userBalance - challenge.stake;
+    await updateBalance(newBal, 'bet_loss', challenge.stake, 'P2P Challenge accepted (escrow)');
+
+    // Update challenge as matched
+    await sb.from('p2p_challenges').update({
+      acceptor_id: currentUser.id,
+      acceptor_name: name,
+      status: 'matched',
+    }).eq('id', challenge.id);
+
+    closeModal('accept-modal');
+    showToast(`✅ Challenge accepted! May the best fan win 🏆`);
+
+    // Notify challenger via WhatsApp
+    try {
+      const { data: challengerProfile } = await sb.from('profiles').select('phone').eq('id', challenge.challenger_id).maybeSingle();
+      if (challengerProfile?.phone) {
+        await fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: challengerProfile.phone,
+            message: `⚔️ ${name} accepted your OddsX challenge!
+
+🏆 ${challenge.challenger_label}
+💰 KSH ${challenge.stake.toLocaleString()} each
+
+Game on! 🎯`
+          })
+        });
+      }
+    } catch(e) { console.log('WhatsApp notify failed:', e.message); }
+
+  } catch(e) {
+    showToast('Error accepting challenge: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '✅ Accept Challenge';
+}
+
+async function settleP2PChallenges() {
+  // Called after ESPN results are fetched — settle any matched P2P challenges
+  const { data: challenges } = await sb.from('p2p_challenges')
+    .select('*').eq('status', 'matched');
+  if (!challenges?.length) return;
+
+  for (const c of challenges) {
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${c.league_slug}/scoreboard`);
+      const data = await res.json();
+      const event = (data.events || []).find(e => String(e.id) === String(c.game_id));
+      if (!event) continue;
+      const status = event.status?.type;
+      if (!status?.completed && status?.state !== 'post') continue;
+
+      const comp = event.competitions?.[0];
+      const home = comp?.competitors?.find(x => x.homeAway === 'home');
+      const away = comp?.competitors?.find(x => x.homeAway === 'away');
+      if (!home || !away) continue;
+
+      const hS = parseInt(home.score) || 0, aS = parseInt(away.score) || 0;
+      const result = hS > aS ? 'home' : aS > hS ? 'away' : 'draw';
+
+      const challengerWon = result === c.challenger_pick;
+      const winnerId = challengerWon ? c.challenger_id : c.acceptor_id;
+      const loserId = challengerWon ? c.acceptor_id : c.challenger_id;
+      const winnerName = challengerWon ? c.challenger_name : c.acceptor_name;
+      const pot = c.stake * 2;
+      const winnings = Math.round(pot * 0.9); // 10% house cut
+
+      // Credit winner
+      const { data: winnerProfile } = await sb.from('profiles').select('balance, phone').eq('id', winnerId).maybeSingle();
+      const newBal = (winnerProfile?.balance || 0) + winnings;
+      await sb.from('profiles').update({ balance: newBal }).eq('id', winnerId);
+      await sb.from('transactions').insert({
+        user_id: winnerId, type: 'bet_win', amount: winnings,
+        label: `P2P Challenge won — KSH ${winnings.toLocaleString()}`, balance_after: newBal
+      });
+
+      // Mark settled
+      await sb.from('p2p_challenges').update({
+        status: 'settled', result, winner_id: winnerId, winnings
+      }).eq('id', c.id);
+
+      // Notify both players
+      const loserProfile = await sb.from('profiles').select('phone').eq('id', loserId).maybeSingle();
+      const msgs = [
+        { phone: winnerProfile?.phone, msg: `🏆 You won the OddsX challenge!
+
+${c.challenger_label}
+You receive: KSH ${winnings.toLocaleString()} 🎉` },
+        { phone: loserProfile?.data?.phone, msg: `❌ You lost the OddsX challenge.
+
+${c.challenger_label}
+Better luck next time! Try again at oddsx.co.ke` }
+      ];
+      for (const { phone, msg } of msgs) {
+        if (!phone) continue;
+        fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, message: msg })
+        }).catch(() => {});
+      }
+    } catch(e) { console.log('P2P settle error:', e.message); }
+  }
 }
 
 async function placeBet() {
