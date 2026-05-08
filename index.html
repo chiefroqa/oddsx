@@ -526,6 +526,19 @@ async function signUp() {
         }, { onConflict: 'id' });
       }
       showAuthSuccess('Account created! You can now sign in.');
+      // Send WhatsApp onboarding message if opted in
+      if (whatsappOptin && phone) {
+        try {
+          await fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone,
+              message: `👋 Welcome to OddsX, ${name}!\n\nYour account is ready. Deposit via M-Pesa and start winning today.\n\n🌐 oddsx.co.ke\n\nReply STOP to opt out of alerts.`
+            })
+          });
+        } catch(e) { console.log('WhatsApp onboarding failed:', e.message); }
+      }
     }
   } catch(e) { showAuthError(e.message); }
   btn.disabled = false; btn.textContent = 'Create Account';
