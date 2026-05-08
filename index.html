@@ -132,12 +132,22 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .wallet-btn{border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
 .wallet-btn.deposit{background:var(--accent);color:#000}
 .wallet-btn.withdraw{background:transparent;border:1px solid var(--accent);color:var(--accent)}
-.tx-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--g2);border-radius:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,0.05)}
-.tx-label{font-size:13px;font-weight:500}
+.tx-item{display:flex;align-items:flex-start;justify-content:space-between;padding:12px 14px;background:var(--g2);border-radius:10px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);transition:border-color 0.2s}
+.tx-item:hover{border-color:var(--border)}
+.tx-label{font-size:13px;font-weight:600}
 .tx-date{font-size:11px;color:var(--muted);margin-top:2px}
-.tx-amount{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700}
+.tx-amount{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700}
 .tx-amount.credit{color:var(--accent)}
 .tx-amount.debit{color:var(--accent2)}
+.tx-code{font-size:10px;color:var(--muted);margin-top:3px;font-family:monospace;letter-spacing:0.5px}
+.tx-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:2px 7px;border-radius:20px;margin-top:4px}
+.tx-badge.completed{background:rgba(0,229,160,0.12);color:var(--accent);border:1px solid rgba(0,229,160,0.25)}
+.tx-badge.pending{background:rgba(255,201,71,0.12);color:var(--gold);border:1px solid rgba(255,201,71,0.25)}
+.tx-badge.unmatched{background:rgba(255,71,87,0.12);color:var(--danger);border:1px solid rgba(255,71,87,0.25)}
+.wallet-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.wallet-stat{background:var(--g3);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px;text-align:center}
+.wallet-stat-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.wallet-stat-value{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700}
 .bet-status{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600}
 .bet-status.won{background:rgba(0,229,160,0.15);color:var(--accent)}
 .bet-status.lost{background:rgba(255,107,53,0.15);color:var(--accent2)}
@@ -1871,40 +1881,100 @@ async function renderWallet() {
         <button class="wallet-btn withdraw" onclick="openWithdrawModal()">Withdraw</button>
       </div>
     </div>
-    <div class="section-label">Recent Transactions</div>
-    <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div></div>`;
-  
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-label" style="margin-bottom:0">Transaction History</div>
+      <button onclick="transactionCache=null;renderWallet()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
+    </div>
+    <div id="tx-summary"></div>
+    <div id="tx-filter" style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="tx-filter-btn active" onclick="filterTx('all',this)">All</button>
+      <button class="tx-filter-btn" onclick="filterTx('deposit',this)">Deposits</button>
+      <button class="tx-filter-btn" onclick="filterTx('withdrawal',this)">Withdrawals</button>
+      <button class="tx-filter-btn" onclick="filterTx('bet_win',this)">Wins</button>
+      <button class="tx-filter-btn" onclick="filterTx('bet_loss',this)">Bets</button>
+    </div>
+    <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
+
+  if (!document.getElementById('tx-filter-style')) {
+    const s = document.createElement('style');
+    s.id = 'tx-filter-style';
+    s.textContent = `.tx-filter-btn{background:var(--g3);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:var(--muted);font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer;white-space:nowrap;transition:all 0.2s}.tx-filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}`;
+    document.head.appendChild(s);
+  }
+
   const txEl = document.getElementById('tx-list');
-  
-  // Use cache if available and recent
+  const summaryEl = document.getElementById('tx-summary');
+
   let txs = null;
   if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
     txs = transactionCache;
   } else {
-    const { data } = await sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(20);
+    const { data } = await sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50);
     txs = data || [];
     transactionCache = txs;
     transactionCacheTime = Date.now();
   }
-  
-  if (!txs?.length) { 
-    txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No transactions yet</div>`; 
-    return; 
+
+  window._allTxs = txs;
+
+  if (txs.length) {
+    const totalIn = txs.filter(t => t.type === 'deposit').reduce((s,t) => s + (t.amount||0), 0);
+    const totalOut = txs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + (t.amount||0), 0);
+    summaryEl.innerHTML = `
+      <div class="wallet-summary">
+        <div class="wallet-stat">
+          <div class="wallet-stat-label">Total Deposited</div>
+          <div class="wallet-stat-value" style="color:var(--accent)">KSH ${totalIn.toLocaleString()}</div>
+        </div>
+        <div class="wallet-stat">
+          <div class="wallet-stat-label">Total Withdrawn</div>
+          <div class="wallet-stat-value" style="color:var(--accent2)">KSH ${totalOut.toLocaleString()}</div>
+        </div>
+      </div>`;
   }
-  
+
+  renderTxList(txs, txEl);
+}
+
+function renderTxList(txs, txEl) {
+  if (!txEl) txEl = document.getElementById('tx-list');
+  if (!txs?.length) {
+    txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px"><div style="font-size:28px;margin-bottom:8px">📭</div>No transactions yet</div>`;
+    return;
+  }
+  const icons = { deposit:'💳', withdrawal:'📤', bet_win:'🎉', bet_loss:'🎲', crash_win:'🚀', crash_loss:'💥', mines_win:'💎', mines_loss:'💣' };
+  const labels = { deposit:'M-Pesa Deposit', withdrawal:'M-Pesa Withdrawal', bet_win:'Bet Won', bet_loss:'Bet Placed', crash_win:'Crash Win', crash_loss:'Crash Loss', mines_win:'Mines Win', mines_loss:'Mines Loss' };
   txEl.innerHTML = txs.map(tx => {
-    const isCredit = tx.type === 'deposit' || tx.type === 'bet_win';
+    const isCredit = ['deposit','bet_win','crash_win','mines_win'].includes(tx.type);
     const sign = isCredit ? '+' : '-';
-    const icons = { deposit:'💳', withdrawal:'📤', bet_win:'🎉', bet_loss:'🎲' };
+    const icon = icons[tx.type] || '•';
+    const label = labels[tx.type] || tx.type;
+    const date = new Date(tx.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const mpesaCode = tx.description?.match(/\(([A-Z0-9]{10})\)/)?.[1] || null;
+    let badge = '';
+    if (tx.type === 'deposit') badge = `<span class="tx-badge completed">✓ Confirmed</span>`;
+    if (tx.type === 'withdrawal') badge = `<span class="tx-badge pending">⏳ Processing</span>`;
     return `<div class="tx-item">
-      <div><div class="tx-label">${icons[tx.type]||'•'} ${tx.label||tx.type}</div>
-      <div class="tx-date">${new Date(tx.created_at).toLocaleDateString('en-KE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</div></div>
-      <div>
+      <div style="flex:1">
+        <div class="tx-label">${icon} ${label}</div>
+        <div class="tx-date">${date}</div>
+        ${mpesaCode ? `<div class="tx-code">Ref: ${mpesaCode}</div>` : ''}
+        ${badge}
+      </div>
+      <div style="text-align:right;min-width:90px">
         <div class="tx-amount ${isCredit?'credit':'debit'}">${sign}KSH ${tx.amount?.toLocaleString()}</div>
-        <div style="font-size:10px;color:var(--muted);text-align:right">Bal: ${tx.balance_after?.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Bal: KSH ${tx.balance_after?.toLocaleString?.() ?? '—'}</div>
       </div>
     </div>`;
   }).join('');
+}
+
+function filterTx(type, btn) {
+  document.querySelectorAll('.tx-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const all = window._allTxs || [];
+  const filtered = type === 'all' ? all : all.filter(t => t.type === type);
+  renderTxList(filtered);
 }
 
 // ─── BET HISTORY ───
