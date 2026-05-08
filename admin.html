@@ -221,7 +221,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="page-sub">Platform revenue and profitability</div>
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-label">Total Bets Placed</div><div class="stat-value" id="earn-total-bets">—</div><div class="stat-sub" id="earn-total-bets-sub"></div></div>
-        <div class="stat-card"><div class="stat-label">Total Wagered</div><div class="stat-value gold" id="earn-total-wagered">—</div><div class="stat-sub" id="earn-total-wagered-sub"></div></div>
+        <div class="stat-card"><div class="stat-label">Total Wagered</div><div class="stat-value gold" id="earn-total-wagered">—</div><div class="stat-sub" id="earn-total-wagered-sub">— pending</div></div>
         <div class="stat-card"><div class="stat-label">Total Winnings Paid</div><div class="stat-value orange" id="earn-total-paid">—</div><div class="stat-sub" id="earn-total-paid-sub"></div></div>
         <div class="stat-card"><div class="stat-label">House Edge Earned</div><div class="stat-value green" id="earn-house-edge">—</div><div class="stat-sub" id="earn-house-edge-pct"></div></div>
       </div>
@@ -690,8 +690,8 @@ async function settleBet(betId, userId, payout, result) {
 // ── EARNINGS ──
 async function loadEarnings() {
   const { data: bets } = await sb.from('bets').select('*');
-  const { data: txns } = await sb.from('transactions').select('*');
-  
+  const { data: deposits } = await sb.from('deposit_requests').select('amount, status, created_at');
+
   if (!bets?.length) {
     document.getElementById('earn-total-bets').textContent = '0';
     document.getElementById('earn-total-wagered').textContent = 'KSH 0';
@@ -699,42 +699,72 @@ async function loadEarnings() {
     document.getElementById('earn-house-edge').textContent = 'KSH 0';
     return;
   }
-  
-  // Calculate stats
-  const totalBets = bets.length;
-  const totalWagered = bets.reduce((sum, b) => sum + (b.stake || 0), 0);
-  const totalWon = bets.filter(b => b.status === 'won').length;
-  const totalPaid = bets.filter(b => b.status === 'won').reduce((sum, b) => sum + (b.payout || 0), 0);
-  const houseEdge = totalWagered - totalPaid;
-  const houseEdgePct = totalWagered > 0 ? ((houseEdge / totalWagered) * 100).toFixed(2) : 0;
-  
-  // Update stats
-  document.getElementById('earn-total-bets').textContent = totalBets.toLocaleString();
-  document.getElementById('earn-total-bets-sub').textContent = `${totalWon} won · ${totalBets - totalWon} lost`;
-  document.getElementById('earn-total-wagered').textContent = 'KSH ' + fmt(totalWagered);
-  document.getElementById('earn-total-paid').textContent = 'KSH ' + fmt(totalPaid);
-  document.getElementById('earn-total-paid-sub').textContent = fmt(totalPaid / (totalBets || 1)) + ' avg payout';
-  document.getElementById('earn-house-edge').textContent = 'KSH ' + fmt(houseEdge);
-  document.getElementById('earn-house-edge-pct').textContent = houseEdgePct + '% margin';
-  
-  // Breakdown by game type
-  const byType = {};
-  txns?.forEach(t => {
-    if (!byType[t.type]) byType[t.type] = { count: 0, amount: 0, volume: 0 };
-    byType[t.type].count++;
-    byType[t.type].amount += t.amount || 0;
-  });
-  
+
+  // Bet segments
+  const settledBets = bets.filter(b => b.status === 'won' || b.status === 'lost');
+  const pendingBets = bets.filter(b => b.status === 'pending');
+  const wonBets = bets.filter(b => b.status === 'won');
+  const lostBets = bets.filter(b => b.status === 'lost');
+
+  // Core financials — only use SETTLED bets for accurate numbers
+  const totalStaked = settledBets.reduce((s, b) => s + (b.stake || 0), 0);
+  const totalWageredAll = bets.reduce((s, b) => s + (b.stake || 0), 0);
+  const totalPaid = wonBets.reduce((s, b) => s + (b.payout || 0), 0);
+  const totalLostStakes = lostBets.reduce((s, b) => s + (b.stake || 0), 0);
+  const pendingStake = pendingBets.reduce((s, b) => s + (b.stake || 0), 0);
+  const pendingExposure = pendingBets.reduce((s, b) => s + (b.potential_payout || 0), 0);
+
+  // House edge = what users lost (settled only)
+  // = stakes collected from losers - winnings paid out to winners
+  const houseEdge = totalLostStakes - (totalPaid - wonBets.reduce((s,b) => s+(b.stake||0),0));
+  // Simpler: revenue = total settled stakes - total payouts
+  const revenue = totalStaked - totalPaid;
+  const marginPct = totalStaked > 0 ? ((revenue / totalStaked) * 100).toFixed(1) : 0;
+
+  // Deposits
+  const totalDeposited = (deposits || []).filter(d => d.status === 'completed').reduce((s,d) => s+(d.amount||0), 0);
+
+  // Avg payout per winning bet
+  const avgPayout = wonBets.length > 0 ? (totalPaid / wonBets.length) : 0;
+
+  // Update stat cards
+  document.getElementById('earn-total-bets').textContent = bets.length.toLocaleString();
+  document.getElementById('earn-total-bets-sub').textContent = `${wonBets.length} won · ${lostBets.length} lost · ${pendingBets.length} pending`;
+  document.getElementById('earn-total-wagered').textContent = 'KSH ' + (totalWageredAll).toLocaleString();
+  document.getElementById('earn-total-wagered-sub').textContent = 'KSH ' + pendingStake.toLocaleString() + ' pending settlement';
+  document.getElementById('earn-total-paid').textContent = 'KSH ' + totalPaid.toLocaleString();
+  document.getElementById('earn-total-paid-sub').textContent = 'KSH ' + avgPayout.toLocaleString(undefined,{maximumFractionDigits:0}) + ' avg per win';
+  document.getElementById('earn-house-edge').textContent = 'KSH ' + revenue.toLocaleString();
+  document.getElementById('earn-house-edge-pct').textContent = marginPct + '% margin on settled bets';
+
+  // Breakdown
   const breakdown = document.getElementById('earnings-breakdown');
-  breakdown.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-    ${Object.entries(byType).map(([type, data]) => `
-      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${type}</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--accent)">${data.count}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${fmt(data.amount)}</div>
+  breakdown.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Settled Bets Breakdown</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+        <div style="background:rgba(0,229,160,0.06);border:1px solid rgba(0,229,160,0.15);border-radius:8px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Stakes Collected</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">KSH ${totalStaked.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${settledBets.length} settled bets</div>
+        </div>
+        <div style="background:rgba(255,71,87,0.06);border:1px solid rgba(255,71,87,0.15);border-radius:8px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Winnings Paid Out</div>
+          <div style="font-size:20px;font-weight:700;color:#ff4757">KSH ${totalPaid.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${wonBets.length} winning bets</div>
+        </div>
+        <div style="background:rgba(255,201,71,0.06);border:1px solid rgba(255,201,71,0.15);border-radius:8px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Pending Exposure</div>
+          <div style="font-size:20px;font-weight:700;color:var(--gold)">KSH ${pendingExposure.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${pendingBets.length} bets at risk · KSH ${pendingStake.toLocaleString()} staked</div>
+        </div>
+        <div style="background:rgba(0,229,160,0.1);border:1px solid rgba(0,229,160,0.25);border-radius:8px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Net Revenue</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">KSH ${revenue.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${marginPct}% margin · KSH ${totalDeposited.toLocaleString()} deposited</div>
+        </div>
       </div>
-    `).join('')}
-  </div>`;
+    </div>`;
 }
 
 // ── PAYOUTS ──
