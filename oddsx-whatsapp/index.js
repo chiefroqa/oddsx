@@ -10,6 +10,7 @@ app.use(express.json())
 
 let sock = null
 let isConnected = false
+let lastQR = null
 
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info')
@@ -23,12 +24,14 @@ async function connectWhatsApp() {
 
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      console.log('\n📱 Scan this QR code with your WhatsApp Business number:\n')
+      lastQR = qr
+      console.log('\n📱 New QR code generated - visit /qr to scan')
       qrcode.generate(qr, { small: true })
     }
 
     if (connection === 'close') {
       isConnected = false
+      lastQR = null
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
       console.log('Connection closed. Reconnecting:', shouldReconnect)
       if (shouldReconnect) connectWhatsApp()
@@ -36,10 +39,47 @@ async function connectWhatsApp() {
 
     if (connection === 'open') {
       isConnected = true
+      lastQR = null
       console.log('✅ WhatsApp connected!')
     }
   })
 }
+
+// QR code page
+app.get('/qr', (req, res) => {
+  if (isConnected) {
+    return res.send(`
+      <html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
+        <h2 style="color:#00e5a0">✅ WhatsApp Connected!</h2>
+        <p>Your OddsX WhatsApp server is live and ready.</p>
+      </body></html>
+    `)
+  }
+  if (!lastQR) {
+    return res.send(`
+      <html><head><meta http-equiv="refresh" content="3"></head>
+      <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
+        <h2>⏳ Generating QR code...</h2>
+        <p>Page will refresh automatically.</p>
+      </body></html>
+    `)
+  }
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(lastQR)}`
+  res.send(`
+    <html><head><meta http-equiv="refresh" content="30"></head>
+    <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
+      <h2 style="color:#00e5a0">📱 Scan with WhatsApp Business</h2>
+      <p>Open WhatsApp → Linked Devices → Link a Device</p>
+      <img src="${qrUrl}" style="margin:20px auto;display:block;border-radius:12px">
+      <p style="color:#888;font-size:12px">Page auto-refreshes every 30 seconds</p>
+    </body></html>
+  `)
+})
+
+// Status check
+app.get('/status', (req, res) => {
+  res.json({ connected: isConnected })
+})
 
 // Send single message
 app.post('/send', async (req, res) => {
@@ -48,7 +88,6 @@ app.post('/send', async (req, res) => {
   if (!phone || !message) return res.status(400).json({ error: 'phone and message required' })
 
   try {
-    // Format: 2547XXXXXXXX@s.whatsapp.net
     const jid = phone.replace(/\D/g, '') + '@s.whatsapp.net'
     await sock.sendMessage(jid, { text: message })
     res.json({ success: true, to: phone })
@@ -69,7 +108,6 @@ app.post('/broadcast', async (req, res) => {
       const jid = phone.replace(/\D/g, '') + '@s.whatsapp.net'
       await sock.sendMessage(jid, { text: message })
       results.push({ phone, status: 'sent' })
-      // Small delay between messages to avoid ban
       await new Promise(r => setTimeout(r, 1500))
     } catch (err) {
       results.push({ phone, status: 'failed', error: err.message })
@@ -77,11 +115,6 @@ app.post('/broadcast', async (req, res) => {
   }
 
   res.json({ success: true, results })
-})
-
-// Health check
-app.get('/status', (req, res) => {
-  res.json({ connected: isConnected })
 })
 
 const PORT = process.env.PORT || 3000
