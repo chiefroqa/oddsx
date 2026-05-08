@@ -297,6 +297,28 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
+    <!-- BROADCAST -->
+    <div class="page" id="page-broadcast">
+      <div class="page-title">WhatsApp Broadcast</div>
+      <div class="page-sub">Send messages to all opted-in users via WhatsApp</div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:16px">Compose Message</div>
+        <div class="field">
+          <label>Message</label>
+          <textarea id="broadcast-msg" placeholder="e.g. 🔥 50% deposit bonus this weekend! Deposit now at oddsx.co.ke" style="width:100%;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:Barlow,sans-serif;font-size:14px;padding:12px;min-height:100px;resize:vertical;outline:none"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="action-btn approve" onclick="sendBroadcast()" id="broadcast-btn" style="padding:10px 20px;font-size:13px">📣 Send Broadcast</button>
+          <button class="action-btn" onclick="sendTestMessage()" style="padding:10px 20px;font-size:13px;background:transparent;border:1px solid var(--border)">🧪 Test (Send to me)</button>
+          <span id="broadcast-status" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Opted-in Users</div>
+        <div id="broadcast-users"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
+      </div>
+    </div>
+
     <!-- TRANSACTIONS -->
     <div class="page" id="page-transactions">
       <div class="page-title">Transactions</div>
@@ -757,6 +779,175 @@ async function loadEarnings() {
         </div>
       </div>
     </div>`;
+}
+
+// ── PAYOUTS ──
+const WHATSAPP_URL = 'https://oddsx-whatsapp-production.up.railway.app';
+
+async function loadPayouts() {
+  const el = document.getElementById('payouts-table');
+  const summaryEl = document.getElementById('payouts-summary');
+  el.innerHTML = '<div class="loading-row"><span class="loading"></span>Loading...</div>';
+
+  // Get all won bets joined with profiles
+  const { data: bets } = await sb
+    .from('bets')
+    .select('*, profiles(email, phone, balance)')
+    .eq('status', 'won')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (!bets?.length) {
+    el.innerHTML = '<div class="loading-row">No won bets found</div>';
+    summaryEl.innerHTML = '';
+    return;
+  }
+
+  // Check which users have been credited via transactions
+  const { data: winTxns } = await sb
+    .from('transactions')
+    .select('user_id, amount, created_at')
+    .eq('type', 'bet_win');
+
+  // Build a set of paid bet amounts per user for cross-reference
+  const paidSet = new Set((winTxns || []).map(t => t.user_id + '_' + t.amount));
+
+  const unpaid = bets.filter(b => !paidSet.has(b.user_id + '_' + b.payout));
+  const paid = bets.filter(b => paidSet.has(b.user_id + '_' + b.payout));
+
+  const totalUnpaid = unpaid.reduce((s, b) => s + (b.payout || 0), 0);
+  const totalPaid = paid.reduce((s, b) => s + (b.payout || 0), 0);
+
+  // Update badge
+  const badge = document.getElementById('payouts-badge');
+  if (unpaid.length > 0) {
+    badge.style.display = 'inline-block';
+    badge.textContent = unpaid.length;
+  } else {
+    badge.style.display = 'none';
+  }
+
+  document.getElementById('payouts-title').textContent = `Unpaid Winnings (${unpaid.length})`;
+
+  summaryEl.innerHTML = `
+    <div style="background:rgba(255,71,87,0.1);border:1px solid rgba(255,71,87,0.2);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Unpaid</div>
+      <div style="font-size:18px;font-weight:700;color:#ff4757">${unpaid.length} bets</div>
+      <div style="font-size:12px;color:#ff4757">KSH ${fmt(totalUnpaid)}</div>
+    </div>
+    <div style="background:rgba(0,229,160,0.1);border:1px solid rgba(0,229,160,0.2);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Paid Out</div>
+      <div style="font-size:18px;font-weight:700;color:var(--accent)">${paid.length} bets</div>
+      <div style="font-size:12px;color:var(--accent)">KSH ${fmt(totalPaid)}</div>
+    </div>
+    <div style="background:var(--g3);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Total Won</div>
+      <div style="font-size:18px;font-weight:700">${bets.length} bets</div>
+      <div style="font-size:12px;color:var(--muted)">KSH ${fmt(totalUnpaid + totalPaid)}</div>
+    </div>`;
+
+  if (!unpaid.length) {
+    el.innerHTML = '<div class="loading-row" style="color:var(--accent)">✅ All won bets have been paid out!</div>';
+    return;
+  }
+
+  el.innerHTML = '<table><tr><th>Date</th><th>User</th><th>Phone</th><th>Selections</th><th>Stake</th><th>Payout</th><th>Action</th></tr>' +
+    unpaid.map(b => {
+      const sels = (b.selections || []).map(s => s.label).join(' + ');
+      const phone = b.profiles?.phone || '—';
+      const email = b.profiles?.email || b.user_id?.slice(0,8);
+      return '<tr>' +
+        '<td style="font-size:11px;color:var(--muted)">' + fmtDate(b.created_at) + '</td>' +
+        '<td style="font-size:12px">' + email + '</td>' +
+        '<td style="font-size:12px;font-family:monospace">' + phone + '</td>' +
+        '<td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + sels + '</td>' +
+        '<td style="font-weight:600">' + fmt(b.stake) + '</td>' +
+        '<td style="color:var(--accent);font-weight:700">' + fmt(b.payout) + '</td>' +
+        '<td>' +
+          '<button class="action-btn approve" onclick="markPaid(\'' + b.id + '\',\'' + b.user_id + '\',' + b.payout + ',\'' + phone + '\')" style="font-size:11px;padding:4px 10px">✓ Mark Paid</button>' +
+        '</td></tr>';
+    }).join('') + '</table>';
+}
+
+async function markPaid(betId, userId, payout, phone) {
+  if (!confirm('Confirm you have sent KSH ' + fmt(payout) + ' to ' + phone + '?')) return;
+  await sb.from('bets').update({ payout_status: 'paid' }).eq('id', betId);
+  const { data: profile } = await sb.from('profiles').select('balance').eq('id', userId).single();
+  const newBal = (profile?.balance || 0) + payout;
+  await sb.from('profiles').update({ balance: newBal }).eq('id', userId);
+  await sb.from('transactions').insert({ user_id: userId, type: 'bet_win', amount: payout, label: 'Won — payout KSH ' + fmt(payout), balance_after: newBal });
+  toast('✅ Payout marked as paid and wallet credited');
+  loadPayouts();
+}
+
+// ── BROADCAST ──
+async function loadBroadcastUsers() {
+  const { data } = await sb.from('profiles').select('email, phone').eq('whatsapp_optin', true).not('phone', 'is', null);
+  const el = document.getElementById('broadcast-users');
+  if (!data?.length) { el.innerHTML = '<div class="loading-row">No opted-in users yet</div>'; return; }
+  el.innerHTML = `
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted)">${data.length} users will receive this message</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${data.map(u => `<span style="background:var(--g3);border:1px solid rgba(255,255,255,0.08);border-radius:20px;font-size:11px;padding:4px 10px">${u.phone}</span>`).join('')}
+    </div>`;
+}
+
+async function sendBroadcast() {
+  const msg = document.getElementById('broadcast-msg').value.trim();
+  if (!msg) return toast('Please type a message first');
+  if (!confirm('Send this message to all opted-in users?')) return;
+
+  const btn = document.getElementById('broadcast-btn');
+  const status = document.getElementById('broadcast-status');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const { data: users } = await sb.from('profiles').select('phone').eq('whatsapp_optin', true).not('phone', 'is', null);
+  const phones = (users || []).map(u => u.phone).filter(Boolean);
+
+  if (!phones.length) {
+    toast('No opted-in users found');
+    btn.disabled = false;
+    btn.textContent = '📣 Send Broadcast';
+    return;
+  }
+
+  try {
+    const res = await fetch(WHATSAPP_URL + '/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phones, message: msg })
+    });
+    const data = await res.json();
+    const sent = data.results?.filter(r => r.status === 'sent').length || 0;
+    const failed = data.results?.filter(r => r.status === 'failed').length || 0;
+    status.textContent = `✅ Sent: ${sent} | ❌ Failed: ${failed}`;
+    toast(`Broadcast complete — ${sent} sent, ${failed} failed`);
+    document.getElementById('broadcast-msg').value = '';
+  } catch (err) {
+    toast('Broadcast failed: ' + err.message);
+    status.textContent = '❌ Failed — check WhatsApp server';
+  }
+
+  btn.disabled = false;
+  btn.textContent = '📣 Send Broadcast';
+}
+
+async function sendTestMessage() {
+  const msg = document.getElementById('broadcast-msg').value.trim();
+  if (!msg) return toast('Please type a message first');
+  const { data: profile } = await sb.from('profiles').select('phone').eq('id', adminUser.id).maybeSingle();
+  if (!profile?.phone) return toast('No phone number on your admin profile');
+  try {
+    await fetch(WHATSAPP_URL + '/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: profile.phone, message: msg })
+    });
+    toast('Test message sent to ' + profile.phone);
+  } catch (err) {
+    toast('Failed: ' + err.message);
+  }
 }
 
 // ── TRANSACTIONS ──
