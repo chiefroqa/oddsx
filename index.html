@@ -1905,21 +1905,54 @@ async function renderWallet() {
   const txEl = document.getElementById('tx-list');
   const summaryEl = document.getElementById('tx-summary');
 
-  let txs = null;
+  let allTxs = null;
   if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
-    txs = transactionCache;
+    allTxs = transactionCache;
   } else {
-    const { data } = await sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50);
-    txs = data || [];
-    transactionCache = txs;
+    // Fetch from all three tables in parallel
+    const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
+      sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+      sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+      sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+    ]);
+
+    // Normalize deposits
+    const deposits = (depositsRes.data || []).map(d => ({
+      id: d.id,
+      type: 'deposit',
+      amount: d.amount,
+      mpesa_code: d.mpesa_code,
+      status: d.status,
+      created_at: d.created_at,
+      _source: 'deposit_requests'
+    }));
+
+    // Normalize withdrawals
+    const withdrawals = (withdrawalsRes.data || []).map(w => ({
+      id: w.id,
+      type: 'withdrawal',
+      amount: w.amount,
+      phone: w.phone,
+      status: w.status || 'pending',
+      created_at: w.created_at,
+      _source: 'withdrawal_requests'
+    }));
+
+    // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
+    const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
+
+    // Merge and sort by date
+    allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    transactionCache = allTxs;
     transactionCacheTime = Date.now();
   }
 
-  window._allTxs = txs;
+  window._allTxs = allTxs;
 
-  if (txs.length) {
-    const totalIn = txs.filter(t => t.type === 'deposit').reduce((s,t) => s + (t.amount||0), 0);
-    const totalOut = txs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + (t.amount||0), 0);
+  // Summary stats from source tables
+  const totalIn = allTxs.filter(t => t.type === 'deposit').reduce((s,t) => s + (t.amount||0), 0);
+  const totalOut = allTxs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + (t.amount||0), 0);
+  if (allTxs.length) {
     summaryEl.innerHTML = `
       <div class="wallet-summary">
         <div class="wallet-stat">
@@ -1933,7 +1966,7 @@ async function renderWallet() {
       </div>`;
   }
 
-  renderTxList(txs, txEl);
+  renderTxList(allTxs, txEl);
 }
 
 function renderTxList(txs, txEl) {
@@ -1944,26 +1977,45 @@ function renderTxList(txs, txEl) {
   }
   const icons = { deposit:'💳', withdrawal:'📤', bet_win:'🎉', bet_loss:'🎲', crash_win:'🚀', crash_loss:'💥', mines_win:'💎', mines_loss:'💣' };
   const labels = { deposit:'M-Pesa Deposit', withdrawal:'M-Pesa Withdrawal', bet_win:'Bet Won', bet_loss:'Bet Placed', crash_win:'Crash Win', crash_loss:'Crash Loss', mines_win:'Mines Win', mines_loss:'Mines Loss' };
+
   txEl.innerHTML = txs.map(tx => {
     const isCredit = ['deposit','bet_win','crash_win','mines_win'].includes(tx.type);
     const sign = isCredit ? '+' : '-';
     const icon = icons[tx.type] || '•';
-    const label = labels[tx.type] || tx.type;
+    const label = labels[tx.type] || tx.description || tx.label || tx.type;
     const date = new Date(tx.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    const mpesaCode = tx.description?.match(/\(([A-Z0-9]{10})\)/)?.[1] || null;
+
+    // M-Pesa code: from deposit_requests directly or from description in transactions
+    const mpesaCode = tx.mpesa_code || tx.description?.match(/\(([A-Z0-9]{10})\)/)?.[1] || null;
+
+    // Phone for withdrawals
+    const phone = tx.phone || null;
+
+    // Status badge
     let badge = '';
-    if (tx.type === 'deposit') badge = `<span class="tx-badge completed">✓ Confirmed</span>`;
-    if (tx.type === 'withdrawal') badge = `<span class="tx-badge pending">⏳ Processing</span>`;
+    if (tx.type === 'deposit') {
+      const s = tx.status || 'completed';
+      if (s === 'completed') badge = `<span class="tx-badge completed">✓ Confirmed</span>`;
+      else if (s === 'unmatched') badge = `<span class="tx-badge unmatched">⚠ Unmatched</span>`;
+      else badge = `<span class="tx-badge pending">⏳ Pending</span>`;
+    }
+    if (tx.type === 'withdrawal') {
+      const s = tx.status || 'pending';
+      if (s === 'completed') badge = `<span class="tx-badge completed">✓ Sent</span>`;
+      else badge = `<span class="tx-badge pending">⏳ Processing</span>`;
+    }
+
     return `<div class="tx-item">
       <div style="flex:1">
         <div class="tx-label">${icon} ${label}</div>
         <div class="tx-date">${date}</div>
         ${mpesaCode ? `<div class="tx-code">Ref: ${mpesaCode}</div>` : ''}
+        ${phone && tx.type==='withdrawal' ? `<div class="tx-code">To: ${phone}</div>` : ''}
         ${badge}
       </div>
       <div style="text-align:right;min-width:90px">
         <div class="tx-amount ${isCredit?'credit':'debit'}">${sign}KSH ${tx.amount?.toLocaleString()}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Bal: KSH ${tx.balance_after?.toLocaleString?.() ?? '—'}</div>
+        ${tx.balance_after ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">Bal: KSH ${tx.balance_after?.toLocaleString()}</div>` : ''}
       </div>
     </div>`;
   }).join('');
