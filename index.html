@@ -190,8 +190,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="you@email.com"></div>
       <div class="field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••"></div>
       <button class="auth-btn" onclick="signIn()">Sign In</button>
-      <div class="divider" style="display:none">or</div>
-      <button class="google-btn" onclick="signInGoogle()" style="display:none">
+      <div class="divider">or</div>
+      <button class="google-btn" onclick="signInGoogle()">
         <svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         Continue with Google
       </button>
@@ -210,8 +210,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
         ✅ Receive bet alerts on WhatsApp
       </label>
       <button class="auth-btn" onclick="signUp()">Create Account</button>
-      <div class="divider" style="display:none">or</div>
-      <button class="google-btn" onclick="signInGoogle()" style="display:none">
+      <div class="divider">or</div>
+      <button class="google-btn" onclick="signInGoogle()">
         <svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         Continue with Google
       </button>
@@ -260,8 +260,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     </div>
     <span style="font-size:11px;color:var(--muted)">KSH</span>
     <input class="slip-input" type="number" id="stake" value="200" min="50" step="50" oninput="calcReturn()">
-    <button class="place-btn" id="place-btn" onclick="placeBet()">Bet</button>
-    <button class="place-btn" id="challenge-btn" onclick="createChallenge()" style="background:var(--gold);color:#000;display:none;gap:5px;align-items:center;font-size:13px;padding:7px 12px">⚔️ Challenge</button>
+    <button class="place-btn" id="place-btn" onclick="placeBet()">Place Bet</button>
+    <button class="place-btn" id="challenge-btn" onclick="createChallenge()" style="background:var(--gold);color:#000;display:none" title="Challenge a friend">⚔️</button>
   </div>
 </div>
 
@@ -282,7 +282,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
         oninput="updateChallengePreview()">
     </div>
     <div style="background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--muted)">
-      💰 5% house cut on winnings · Winner takes <span id="challenge-winner-takes" style="color:var(--gold);font-weight:700">—</span>
+      💰 10% house cut on winnings · Winner takes <span id="challenge-winner-takes" style="color:var(--gold);font-weight:700">—</span>
     </div>
     <button class="modal-btn" onclick="confirmChallenge()" id="confirm-challenge-btn">⚔️ Create Challenge & Share</button>
   </div>
@@ -290,25 +290,18 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 
 <!-- P2P ACCEPT MODAL -->
 <div class="modal-overlay" id="accept-modal" style="display:none">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" style="max-width:380px">
     <div style="text-align:center;margin-bottom:20px">
       <div style="font-size:28px;margin-bottom:6px">⚔️</div>
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700" id="accept-title">Challenge</div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px" id="accept-sub"></div>
     </div>
-    <div style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Their pick</div>
-      <div style="font-weight:700;color:var(--accent)" id="accept-their-pick">—</div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Pick your side:</div>
-      <div id="accept-sides" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
+    <div id="accept-preview" style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
     <div style="background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--muted)">
-      💰 Winner takes <span id="accept-winner-takes" style="color:var(--gold);font-weight:700">—</span> · 5% house cut · Declining refunds challenger 95%
+      💰 Winner takes <span id="accept-winner-takes" style="color:var(--gold);font-weight:700">—</span> (10% house cut applied)
     </div>
-    <button class="modal-btn" onclick="acceptChallenge()" id="accept-challenge-btn" disabled style="opacity:0.5;cursor:not-allowed">Select a side to accept</button>
-    <button onclick="declineChallenge()" style="width:100%;background:none;border:1px solid rgba(255,71,87,0.3);border-radius:8px;color:var(--danger);font-size:13px;padding:10px;cursor:pointer;margin-top:8px">❌ Decline (95% refund to challenger)</button>
+    <button class="modal-btn" onclick="acceptChallenge()" id="accept-challenge-btn">✅ Accept Challenge</button>
+    <button onclick="closeModal('accept-modal')" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:10px;cursor:pointer;margin-top:6px">Decline</button>
   </div>
 </div>
 
@@ -458,7 +451,7 @@ async function loadUser(user) {
       full_name: user.user_metadata?.full_name || '',
       phone: user.user_metadata?.phone || null,
       whatsapp_optin: true,
-      balance: 200
+      balance: 1000
     });
     ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
   }
@@ -575,7 +568,7 @@ async function signUp() {
           full_name: name,
           phone,
           whatsapp_optin: whatsappOptin,
-          balance: 200
+          balance: 1000
         }, { onConflict: 'id' });
       }
       showAuthSuccess('Account created! You can now sign in.');
@@ -1070,10 +1063,8 @@ function renderSports() {
     const leagueSlug = sport?.leagues?.[0] || '';
     const gameDate = g.date ? g.date.slice(0,10).replace(/-/g,'') : '';
 
-    const homeTeam = g.homeTeam?.name || g.homeTeam?.abbreviation || '';
-    const awayTeam = g.awayTeam?.name || g.awayTeam?.abbreviation || '';
     const oddsClick = (type, team, odds) =>
-      canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}','${leagueSlug}','${gameDate}','${homeTeam}','${awayTeam}')"` : '';
+      canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}','${leagueSlug}','${gameDate}')"` : '';
 
     el.innerHTML += `
     <div class="game-card" style="${locked?'opacity:0.7':''}">
@@ -1135,9 +1126,9 @@ function renderSports() {
   });
 }
 
-function selectOdd(gameId, type, label, odds, leagueSlug, gameDate, homeTeam, awayTeam) {
+function selectOdd(gameId, type, label, odds, leagueSlug, gameDate) {
   if (selections[gameId]?.type === type) delete selections[gameId];
-  else selections[gameId] = { type, label, odds, gameId, leagueSlug, gameDate, homeTeam, awayTeam };
+  else selections[gameId] = { type, label, odds, gameId, leagueSlug, gameDate };
   const n = Object.keys(selections).length;
   document.getElementById('slip-cnt').textContent = n;
   document.getElementById('betslip').style.display = n > 0 ? 'flex' : 'none';
@@ -1201,7 +1192,7 @@ function updateChallengePreview() {
   const { bet } = activeChallengeData;
   const stake = parseFloat(document.getElementById('challenge-stake').value) || 0;
   const pot = stake * 2;
-  const winnerTakes = Math.round(pot * 0.95);
+  const winnerTakes = Math.round(pot * 0.9);
   document.getElementById('challenge-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
   document.getElementById('challenge-preview').innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">${bet.label}</div>
@@ -1228,11 +1219,6 @@ async function confirmChallenge() {
     const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
     const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Someone';
 
-    // Extract team names from bet label for the accept modal
-    const labelParts = bet.label || '';
-    const homeTeam = bet.homeTeam || labelParts.replace(' Win','').trim();
-    const awayTeam = bet.awayTeam || '';
-
     // Create challenge record
     const { data: challenge, error } = await sb.from('p2p_challenges').insert({
       challenger_id: currentUser.id,
@@ -1242,8 +1228,6 @@ async function confirmChallenge() {
       game_date: bet.gameDate,
       challenger_pick: bet.type,
       challenger_label: bet.label,
-      home_team: bet.homeTeam || '',
-      away_team: bet.awayTeam || '',
       stake,
       status: 'open',
       expires_at: bet.gameDate,
@@ -1298,57 +1282,25 @@ async function checkForChallenge() {
   showAcceptModal(challenge);
 }
 
-let selectedAcceptorPick = null;
-
 function showAcceptModal(challenge) {
   const pot = challenge.stake * 2;
-  const winnerTakes = Math.round(pot * 0.95);
-  selectedAcceptorPick = null;
+  const winnerTakes = Math.round(pot * 0.9);
+  const oppositeLabel = challenge.challenger_pick === 'home' ? 'Draw or Away Win' :
+    challenge.challenger_pick === 'away' ? 'Draw or Home Win' : 'Either team wins';
 
   document.getElementById('accept-title').textContent = `${challenge.challenger_name} challenges you!`;
   document.getElementById('accept-sub').textContent = `Stake: KSH ${challenge.stake.toLocaleString()} each`;
   document.getElementById('accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
-  document.getElementById('accept-their-pick').textContent = challenge.challenger_label;
-
-  // Build side options — all sides except challenger's pick
-  const allSides = [
-    { type: 'home', label: challenge.home_team + ' Win' },
-    { type: 'draw', label: 'Draw' },
-    { type: 'away', label: challenge.away_team + ' Win' },
-  ].filter(s => s.type !== challenge.challenger_pick);
-
-  document.getElementById('accept-sides').innerHTML = allSides.map(s => `
-    <button onclick="selectAcceptorSide('${s.type}', '${s.label}', this)"
-      style="width:100%;background:var(--g3);border:2px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-size:14px;font-weight:600;padding:12px;cursor:pointer;text-align:left;transition:all 0.2s">
-      ${s.label}
-    </button>`).join('');
-
-  const btn = document.getElementById('accept-challenge-btn');
-  btn.disabled = true;
-  btn.style.opacity = '0.5';
-  btn.style.cursor = 'not-allowed';
-  btn.textContent = 'Select a side to accept';
-
+  document.getElementById('accept-preview').innerHTML = `
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Their pick</div>
+      <div style="font-weight:700;color:var(--accent)">${challenge.challenger_label}</div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Your side</div>
+      <div style="font-weight:700;color:var(--gold)">${oppositeLabel}</div>
+    </div>`;
   openModal('accept-modal');
-}
-
-function selectAcceptorSide(type, label, btn) {
-  selectedAcceptorPick = { type, label };
-  // Highlight selected
-  document.querySelectorAll('#accept-sides button').forEach(b => {
-    b.style.borderColor = 'rgba(255,255,255,0.1)';
-    b.style.background = 'var(--g3)';
-    b.style.color = 'var(--text)';
-  });
-  btn.style.borderColor = 'var(--accent)';
-  btn.style.background = 'rgba(0,229,160,0.1)';
-  btn.style.color = 'var(--accent)';
-  // Enable accept button
-  const acceptBtn = document.getElementById('accept-challenge-btn');
-  acceptBtn.disabled = false;
-  acceptBtn.style.opacity = '1';
-  acceptBtn.style.cursor = 'pointer';
-  acceptBtn.textContent = `✅ Accept — ${label}`;
 }
 
 async function acceptChallenge() {
@@ -1356,31 +1308,28 @@ async function acceptChallenge() {
   const challenge = pendingAcceptChallenge;
   if (!challenge) return;
   if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
-  if (!selectedAcceptorPick) return showToast('Please select your side first');
   if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
 
   const btn = document.getElementById('accept-challenge-btn');
   btn.disabled = true; btn.textContent = 'Accepting...';
 
   try {
-    const { data: profile } = await sb.from('profiles').select('full_name, phone').eq('id', currentUser.id).maybeSingle();
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
     const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Challenger';
 
     // Deduct stake from acceptor (escrow)
     const newBal = userBalance - challenge.stake;
     await updateBalance(newBal, 'bet_loss', challenge.stake, 'P2P Challenge accepted (escrow)');
 
-    // Update challenge as matched with acceptor pick
+    // Update challenge as matched
     await sb.from('p2p_challenges').update({
       acceptor_id: currentUser.id,
       acceptor_name: name,
-      acceptor_pick: selectedAcceptorPick.type,
-      acceptor_label: selectedAcceptorPick.label,
       status: 'matched',
     }).eq('id', challenge.id);
 
     closeModal('accept-modal');
-    showToast('✅ Challenge accepted! May the best fan win 🏆');
+    showToast(`✅ Challenge accepted! May the best fan win 🏆`);
 
     // Notify challenger via WhatsApp
     try {
@@ -1391,7 +1340,12 @@ async function acceptChallenge() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: challengerProfile.phone,
-            message: '⚔️ ' + name + ' accepted your OddsX challenge!\n\n🏆 ' + challenge.challenger_label + ' vs ' + selectedAcceptorPick.label + '\n💰 KSH ' + challenge.stake.toLocaleString() + ' each\n\nGame on! 🎯'
+            message: `⚔️ ${name} accepted your OddsX challenge!
+
+🏆 ${challenge.challenger_label}
+💰 KSH ${challenge.stake.toLocaleString()} each
+
+Game on! 🎯`
           })
         });
       }
@@ -1402,44 +1356,6 @@ async function acceptChallenge() {
   }
   btn.disabled = false; btn.textContent = '✅ Accept Challenge';
 }
-
-async function declineChallenge() {
-  const challenge = pendingAcceptChallenge;
-  if (!challenge) return;
-  if (!confirm('Decline this challenge? The challenger will be refunded 95% of their stake.')) return;
-
-  try {
-    const refund = Math.round(challenge.stake * 0.95);
-    const { data: challengerProfile } = await sb.from('profiles').select('balance, phone').eq('id', challenge.challenger_id).maybeSingle();
-    const newBal = (challengerProfile?.balance || 0) + refund;
-    await sb.from('profiles').update({ balance: newBal }).eq('id', challenge.challenger_id);
-    await sb.from('transactions').insert({
-      user_id: challenge.challenger_id,
-      type: 'deposit',
-      amount: refund,
-      label: 'P2P Challenge declined — 95% refund',
-      balance_after: newBal
-    });
-    await sb.from('p2p_challenges').update({ status: 'declined' }).eq('id', challenge.id);
-
-    closeModal('accept-modal');
-    showToast('Challenge declined. Challenger refunded 95%.');
-
-    if (challengerProfile?.phone) {
-      fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: challengerProfile.phone,
-          message: '❌ Your OddsX challenge was declined.\n\nRefund: KSH ' + refund.toLocaleString() + ' credited to your wallet.\n\nTry challenging someone else at oddsx.co.ke 💪'
-        })
-      }).catch(() => {});
-    }
-  } catch(e) {
-    showToast('Error declining challenge: ' + e.message);
-  }
-}
-
 
 async function settleP2PChallenges() {
   // Called after ESPN results are fetched — settle any matched P2P challenges
@@ -1464,26 +1380,12 @@ async function settleP2PChallenges() {
       const hS = parseInt(home.score) || 0, aS = parseInt(away.score) || 0;
       const result = hS > aS ? 'home' : aS > hS ? 'away' : 'draw';
 
-      // Check who picked the correct result
       const challengerWon = result === c.challenger_pick;
-      const acceptorWon = result === c.acceptor_pick;
-      // If neither picked correctly (e.g. draw when neither picked draw), refund both 95%
-      if (!challengerWon && !acceptorWon) {
-        const refund = Math.round(c.stake * 0.95);
-        for (const uid of [c.challenger_id, c.acceptor_id]) {
-          const { data: p } = await sb.from('profiles').select('balance').eq('id', uid).maybeSingle();
-          const nb = (p?.balance || 0) + refund;
-          await sb.from('profiles').update({ balance: nb }).eq('id', uid);
-          await sb.from('transactions').insert({ user_id: uid, type: 'deposit', amount: refund, label: 'P2P Challenge — no winner, 95% refund', balance_after: nb });
-        }
-        await sb.from('p2p_challenges').update({ status: 'settled', result, winner_id: null, winnings: 0 }).eq('id', c.id);
-        continue;
-      }
       const winnerId = challengerWon ? c.challenger_id : c.acceptor_id;
       const loserId = challengerWon ? c.acceptor_id : c.challenger_id;
       const winnerName = challengerWon ? c.challenger_name : c.acceptor_name;
       const pot = c.stake * 2;
-      const winnings = Math.round(pot * 0.95); // 5% house cut
+      const winnings = Math.round(pot * 0.9); // 10% house cut
 
       // Credit winner
       const { data: winnerProfile } = await sb.from('profiles').select('balance, phone').eq('id', winnerId).maybeSingle();
