@@ -231,6 +231,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
           <div class="dd-email" id="dd-email"></div>
           <div class="dd-item" onclick="showTab('wallet')">💳 Wallet</div>
           <div class="dd-item" onclick="showTab('history')">📋 Bet History</div>
+          <div class="dd-item" onclick="showTab('p2p')">⚔️ Challenges</div>
           <div class="dd-item danger" onclick="signOut()">🚪 Sign Out</div>
         </div>
       </div>
@@ -242,6 +243,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div class="tab" onclick="showTab('mines')"><svg viewBox="0 0 240 209" style="width:16px;height:16px;fill:currentColor;display:inline;margin-right:6px" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0.000000,209.000000) scale(0.100000,-0.100000)" fill="currentColor" stroke="none"><path d="M1045 1776 c-162 -24 -203 -35 -280 -74 -131 -65 -359 -292 -422 -420 -48 -98 -20 -191 89 -298 63 -61 147 -124 167 -124 17 0 24 -21 31 -99 4 -42 17 -101 29 -132 18 -48 31 -63 81 -98 50 -35 60 -47 60 -72 0 -16 -3 -29 -7 -29 -8 0 -124 35 -221 65 -79 25 -82 22 -82 -93 0 -182 -13 -215 -124 -305 -47 -39 -56 -59 -33 -74 6 -4 321 -8 699 -8 l688 0 -58 52 c-31 29 -70 59 -87 67 -118 57 -165 76 -188 76 -35 0 -44 18 -15 29 13 5 91 12 173 15 171 8 250 20 294 47 16 10 60 57 98 104 64 80 72 87 126 102 41 12 67 26 88 50 34 39 38 79 10 88 -32 10 -34 36 -5 66 18 19 24 33 19 48 -5 18 -14 21 -61 21 -53 0 -54 0 -54 30 0 25 4 30 25 31 14 1 30 3 35 4 6 1 19 3 30 4 11 0 38 20 60 42 59 61 55 87 -21 158 -218 202 -220 204 -226 249 -5 34 -12 46 -33 57 -15 8 -52 52 -82 97 -71 107 -199 226 -293 273 -90 44 -212 75 -295 74 -36 -1 -132 -11 -215 -23z"/></g></svg>Kasongo</div>
     <div class="tab" onclick="showTab('wallet')">💳 Wallet</div>
     <div class="tab" onclick="showTab('history')">📋 History</div>
+    <div class="tab" onclick="showTab('p2p')">⚔️ Challenges</div>
   </div>
   <div id="sport-bar" style="background:var(--g2);border-bottom:1px solid rgba(255,255,255,0.06);padding:8px 12px;overflow-x:auto;white-space:nowrap">
     <div style="display:inline-flex;gap:6px" id="sport-chips"></div>
@@ -251,6 +253,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div id="tab-mines" class="content" style="display:none"></div>
   <div id="tab-wallet" class="content" style="display:none"></div>
   <div id="tab-history" class="content" style="display:none"></div>
+  <div id="tab-p2p" class="content" style="display:none"></div>
 
   <div class="betslip" id="betslip" style="display:none">
     <div class="slip-count" id="slip-cnt">0</div>
@@ -671,12 +674,12 @@ async function updateBalance(newBalance, txType, txAmount, txLabel) {
 // ─── TABS ───
 function showTab(t) {
   // Check auth for protected tabs
-  if ((t === 'wallet' || t === 'history') && !currentUser) {
+  if ((t === 'wallet' || t === 'history' || t === 'p2p') && !currentUser) {
     showToast('Sign in to access ' + t);
     showAuthScreen();
     return;
   }
-  const tabs = ['sports','crash','mines','wallet','history'];
+  const tabs = ['sports','crash','mines','wallet','history','p2p'];
   tabs.forEach(id => document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none');
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
   const hasSlip = Object.keys(selections).length > 0;
@@ -684,6 +687,7 @@ function showTab(t) {
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') renderWallet();
   if (t==='history') renderHistory();
+  if (t==='p2p') renderP2PChallenges();
 }
 
 // ─── TOAST ───
@@ -2645,20 +2649,13 @@ async function renderHistory() {
       </div>`;
     }).join('')}`;
 
-  // Load P2P challenges
-  await renderP2PHistory();
 }
 
-async function renderP2PHistory() {
-  const el = document.getElementById('tab-history');
+async function renderP2PChallenges() {
+  const el = document.getElementById('tab-p2p');
   if (!el) return;
 
-  // Append P2P section
-  const p2pSection = document.createElement('div');
-  p2pSection.id = 'p2p-history-section';
-  el.appendChild(p2pSection);
-
-  p2pSection.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px"><div class="section-label">⚔️ P2P Challenges</div></div><div id="p2p-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:16px"><span class="loading"></span> Loading...</div></div>';
+  el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between"><div class="section-label">⚔️ My Challenges</div><button onclick="renderP2PChallenges()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:12px 0 8px">🔄 Refresh</button></div><div id="p2p-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>';
 
   const { data: challenges } = await sb.from('p2p_challenges')
     .select('*')
