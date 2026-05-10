@@ -2594,6 +2594,92 @@ async function renderHistory() {
         <div style="font-size:10px;color:var(--muted);margin-top:5px">${date}</div>
       </div>`;
     }).join('')}`;
+
+  // Load P2P challenges
+  await renderP2PHistory();
+}
+
+async function renderP2PHistory() {
+  const el = document.getElementById('tab-history');
+  if (!el) return;
+
+  // Append P2P section
+  const p2pSection = document.createElement('div');
+  p2pSection.id = 'p2p-history-section';
+  el.appendChild(p2pSection);
+
+  p2pSection.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px"><div class="section-label">⚔️ P2P Challenges</div></div><div id="p2p-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:16px"><span class="loading"></span> Loading...</div></div>';
+
+  const { data: challenges } = await sb.from('p2p_challenges')
+    .select('*')
+    .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  const p2pList = document.getElementById('p2p-list');
+  if (!p2pList) return;
+
+  if (!challenges?.length) {
+    p2pList.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px"><div style="font-size:24px;margin-bottom:8px">⚔️</div>No challenges yet — pick a game and hit Challenge!</div>';
+    return;
+  }
+
+  const statusConfig = {
+    open:     { label: '⏳ Waiting', color: 'rgba(255,201,71,0.15)', border: 'rgba(255,201,71,0.3)', text: 'var(--gold)' },
+    matched:  { label: '🎯 In Play', color: 'rgba(0,229,160,0.06)', border: 'rgba(0,229,160,0.2)', text: 'var(--accent)' },
+    settled:  { label: '✅ Settled', color: 'rgba(0,229,160,0.06)', border: 'rgba(0,229,160,0.15)', text: 'var(--accent)' },
+    cleared:  { label: '🤝 Cleared', color: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: 'var(--muted)' },
+    declined: { label: '❌ Declined', color: 'rgba(255,71,87,0.06)', border: 'rgba(255,71,87,0.2)', text: 'var(--danger)' },
+  };
+
+  p2pList.innerHTML = challenges.map(c => {
+    const iAmChallenger = c.challenger_id === currentUser.id;
+    const myPick = iAmChallenger ? c.challenger_label : c.acceptor_label;
+    const theirPick = iAmChallenger ? c.acceptor_label : c.challenger_label;
+    const theirName = iAmChallenger ? (c.acceptor_name || 'Waiting for opponent...') : c.challenger_name;
+    const cfg = statusConfig[c.status] || statusConfig.open;
+    const date = new Date(c.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+    const pot = c.stake * 2;
+    const winnings = Math.round(pot * 0.95);
+
+    // Result line
+    let resultLine = '';
+    if (c.status === 'settled') {
+      const iWon = c.winner_id === currentUser.id;
+      resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won KSH ' + winnings.toLocaleString() : '❌ You lost KSH ' + c.stake.toLocaleString()) + '</div>';
+    } else if (c.status === 'cleared') {
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Bet cleared — unexpected result · KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded</div>';
+    } else if (c.status === 'declined') {
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Challenge declined · ' + (iAmChallenger ? 'KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded to you' : 'You declined') + '</div>';
+    } else if (c.status === 'open' && iAmChallenger) {
+      // Generate fresh share link
+      const shareUrl = window.location.origin + '?challenge=' + c.id;
+      const msg = encodeURIComponent('⚔️ ' + c.challenger_name + ' challenges you on OddsX!\n\n🏆 ' + c.challenger_label + '\n💰 KSH ' + c.stake.toLocaleString() + ' each\n\nAccept here 👉 ' + shareUrl);
+      resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + msg + '" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
+    }
+
+    return '<div style="background:' + cfg.color + ';border:1px solid ' + cfg.border + ';border-radius:8px;padding:12px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">' +
+        '<div style="font-size:11px;color:var(--muted)">' + (iAmChallenger ? 'You challenged' : 'Challenged by') + ' <span style="color:var(--text);font-weight:600">' + theirName + '</span></div>' +
+        '<span style="font-size:10px;font-weight:700;color:' + cfg.text + ';background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:20px">' + cfg.label + '</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">' +
+        '<div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:8px">' +
+          '<div style="font-size:9px;color:var(--muted);margin-bottom:3px">YOUR PICK</div>' +
+          '<div style="font-size:12px;font-weight:700;color:var(--accent)">' + (myPick || '—') + '</div>' +
+        '</div>' +
+        '<div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:8px">' +
+          '<div style="font-size:9px;color:var(--muted);margin-bottom:3px">THEIR PICK</div>' +
+          '<div style="font-size:12px;font-weight:700;color:var(--gold)">' + (theirPick || (c.status === 'open' ? 'Not yet chosen' : '—')) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<div style="font-size:11px;color:var(--muted)">KSH ' + c.stake.toLocaleString() + ' each · pot KSH ' + pot.toLocaleString() + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">' + date + '</div>' +
+      '</div>' +
+      resultLine +
+    '</div>';
+  }).join('');
 }
 
 // ─── DEPOSIT / WITHDRAW ───
