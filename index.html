@@ -1255,20 +1255,21 @@ function createChallenge() {
 }
 
 function getOppositeLabel(bet) {
-  // Just tells challenger what sides their friend can pick from
   const hasDraw = bet.leagueSlug?.startsWith('soccer') || bet.leagueSlug?.startsWith('football');
+  const home = bet.homeTeam || 'Home';
+  const away = bet.awayTeam || 'Away';
   if (bet.type === 'home') {
     const opts = [];
     if (hasDraw) opts.push('Draw');
-    opts.push((bet.awayTeam || 'Away') + ' Win');
+    opts.push(away + ' Win');
     return opts.join(' or ');
   }
   if (bet.type === 'away') {
-    const opts = [(bet.homeTeam || 'Home') + ' Win'];
+    const opts = [home + ' Win'];
     if (hasDraw) opts.push('Draw');
     return opts.join(' or ');
   }
-  if (bet.type === 'draw') return (bet.homeTeam || 'Home') + ' Win or ' + (bet.awayTeam || 'Away') + ' Win';
+  if (bet.type === 'draw') return home + ' Win or ' + away + ' Win';
   return 'Other side';
 }
 
@@ -1399,12 +1400,14 @@ function showAcceptModal(challenge) {
   document.getElementById('accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
   document.getElementById('accept-their-pick').textContent = challenge.challenger_label;
 
-  // All possible outcomes for this match
+  // All possible outcomes — use actual team names not generic Home/Away
   const hasDraw = challenge.league_slug?.startsWith('soccer') || challenge.league_slug?.startsWith('football');
+  const homeLabel = (challenge.home_team && challenge.home_team !== 'Home') ? challenge.home_team + ' Win' : 'Home Win';
+  const awayLabel = (challenge.away_team && challenge.away_team !== 'Away') ? challenge.away_team + ' Win' : 'Away Win';
   const allPossible = [
-    { type: 'home', label: (challenge.home_team || 'Home') + ' Win' },
+    { type: 'home', label: homeLabel },
     ...(hasDraw ? [{ type: 'draw', label: 'Draw' }] : []),
-    { type: 'away', label: (challenge.away_team || 'Away') + ' Win' },
+    { type: 'away', label: awayLabel },
   ];
   // Opponent picks ONE outcome — any except what challenger already picked
   const availableSides = allPossible.filter(s => s.type !== challenge.challenger_pick);

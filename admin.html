@@ -376,15 +376,9 @@ async function adminLogin() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('admin-app').style.display = 'block';
   document.getElementById('admin-email').textContent = email;
-  loadDashboard();
-  loadDeposits();
-  loadWithdrawals();
-  loadUsers();
-  loadBets();
-  loadTransactions();
-  loadEarnings();
-  // Poll for new pending items every 30s
-  setInterval(() => { loadDashboard(); checkBadges(); }, 30000);
+  loadDashboard(); // Only load dashboard on login — everything else loads on tab click
+  // Poll for new pending items every 60s
+  setInterval(() => { loadDashboard(); checkBadges(); }, 60000);
 }
 
 async function adminSignOut() {
@@ -398,6 +392,12 @@ function showPage(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   document.querySelector(`[data-page="${id}"]`).classList.add('active');
+  if (id === 'deposits') loadDeposits();
+  if (id === 'withdrawals') loadWithdrawals();
+  if (id === 'users') loadUsers();
+  if (id === 'bets') loadBets();
+  if (id === 'earnings') loadEarnings();
+  if (id === 'transactions') loadTransactions();
   if (id === 'payouts') loadPayouts();
   if (id === 'broadcast') loadBroadcastUsers();
 }
@@ -711,16 +711,20 @@ async function loadEarnings() {
   const pendingStake = pendingBets.reduce((s, b) => s + (b.stake || 0), 0);
   const pendingExposure = pendingBets.reduce((s, b) => s + (b.potential_payout || 0), 0);
 
-  // ── CRASH GAME ──
-  const crashLosses = txns.filter(t => t.type === 'crash_loss');
-  const crashWins = txns.filter(t => t.type === 'crash_win');
+  // ── PEPEA (CRASH) GAME ── match type or label
+  const isPepeaLoss = t => t.type === 'crash_loss' || t.type === 'bet_loss' && (t.label||'').toLowerCase().includes('pepea') || (t.label||'').toLowerCase().includes('crash game');
+  const isPepeaWin = t => t.type === 'crash_win' || (t.label||'').toLowerCase().includes('pepea x') || (t.label||'').toLowerCase().includes('crash x') || (t.label||'').toLowerCase().includes('pepea cashed');
+  const crashLosses = txns.filter(isPepeaLoss);
+  const crashWins = txns.filter(isPepeaWin);
   const crashStaked = crashLosses.reduce((s, t) => s + (t.amount || 0), 0);
   const crashPaid = crashWins.reduce((s, t) => s + (t.amount || 0), 0);
   const crashRevenue = crashStaked - crashPaid;
 
-  // ── MINES GAME ──
-  const minesLosses = txns.filter(t => t.type === 'mines_loss');
-  const minesWins = txns.filter(t => t.type === 'mines_win');
+  // ── KASONGO (MINES) GAME ── match type or label
+  const isKasongoLoss = t => t.type === 'mines_loss' || t.type === 'bet_loss' && (t.label||'').toLowerCase().includes('kasongo') || (t.label||'').toLowerCase().includes('mines game');
+  const isKasongoWin = t => t.type === 'mines_win' || (t.label||'').toLowerCase().includes('kasongo cashed') || (t.label||'').toLowerCase().includes('mines cashed');
+  const minesLosses = txns.filter(isKasongoLoss);
+  const minesWins = txns.filter(isKasongoWin);
   const minesStaked = minesLosses.reduce((s, t) => s + (t.amount || 0), 0);
   const minesPaid = minesWins.reduce((s, t) => s + (t.amount || 0), 0);
   const minesRevenue = minesStaked - minesPaid;
@@ -756,12 +760,12 @@ async function loadEarnings() {
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${sportsStaked.toLocaleString()} staked · KSH ${sportsPaid.toLocaleString()} paid</div>
         </div>
         <div style="background:rgba(255,71,87,0.06);border:1px solid rgba(255,71,87,0.15);border-radius:8px;padding:14px;text-align:center">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🚀 Crash Game</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">✈️ Pepea</div>
           <div style="font-size:20px;font-weight:700;color:${crashRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${crashRevenue.toLocaleString()}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${crashStaked.toLocaleString()} in · KSH ${crashPaid.toLocaleString()} out</div>
         </div>
         <div style="background:rgba(255,201,71,0.06);border:1px solid rgba(255,201,71,0.15);border-radius:8px;padding:14px;text-align:center">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💎 Mines Game</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💣 Kasongo</div>
           <div style="font-size:20px;font-weight:700;color:${minesRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${minesRevenue.toLocaleString()}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${minesStaked.toLocaleString()} in · KSH ${minesPaid.toLocaleString()} out</div>
         </div>
