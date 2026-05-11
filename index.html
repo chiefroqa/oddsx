@@ -165,6 +165,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .mpesa-note b{color:var(--accent)}
 .loading{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.3);border-top-color:#000;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--g2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--accent);z-index:300;opacity:0;transition:opacity 0.3s;pointer-events:none}
 .toast.show{opacity:1}
 </style>
@@ -427,11 +429,11 @@ let transactionCache = null;
 let transactionCacheTime = 0;
 let betHistoryCache = null;
 let betHistoryCacheTime = 0;
-const CACHE_DURATION = 30000; // 30 seconds
+const CACHE_DURATION = 300000; // 5 minutes
 
 function getCachedGameStatus(gameId) {
   const cached = gameStatusCache[gameId];
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  if (cached && Date.now() - cached.ts < 300000) {
     return cached.status;
   }
   return null;
@@ -748,9 +750,9 @@ async function fetchESPN(leagues, sportId) {
     return cached.data;
   }
 
-  // Yesterday + today + next 2 days (4 days total instead of 7 — much faster)
+  // Today + tomorrow only (2 days) — fastest meaningful window for betting
   const dates = [];
-  for (let i = -1; i <= 2; i++) {
+  for (let i = 0; i <= 1; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().slice(0,10).replace(/-/g,''));
@@ -778,7 +780,7 @@ async function fetchESPN(leagues, sportId) {
   }
 
   allEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
-  espnCache[cacheKey] = { data: allEvents, ts: Date.now() };
+  espnCache[cacheKey] = { data: allEvents, ts: Date.now() }; // cached for 5 min
   return allEvents;
 }
 
@@ -1044,6 +1046,26 @@ async function loadSport(id) {
 function renderSports() {
   const el = document.getElementById('tab-sports');
   const sport = SPORTS.find(s => s.id === currentSport);
+  // Show skeleton immediately if tab is empty
+  if (!el.innerHTML.trim() || el.innerHTML.includes('Loading')) {
+    el.innerHTML = '<div style="padding:8px">' +
+      [1,2,3].map(() =>
+        '<div style="background:var(--g2);border-radius:10px;padding:20px;margin-bottom:12px;animation:pulse 1.5s ease-in-out infinite">' +
+          '<div style="height:10px;background:var(--g3);border-radius:4px;width:35%;margin-bottom:14px"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;margin-bottom:14px">' +
+            '<div style="height:56px;background:var(--g3);border-radius:8px"></div>' +
+            '<div style="height:56px;width:56px;background:var(--g3);border-radius:8px"></div>' +
+            '<div style="height:56px;background:var(--g3);border-radius:8px"></div>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
+            '<div style="height:38px;background:var(--g3);border-radius:8px"></div>' +
+            '<div style="height:38px;background:var(--g3);border-radius:8px"></div>' +
+            '<div style="height:38px;background:var(--g3);border-radius:8px"></div>' +
+          '</div>' +
+        '</div>'
+      ).join('') +
+    '</div>';
+  }
 
   // Sort: live first, then scheduled, then final
   const sorted = [...liveGames].sort((a,b) => {
@@ -1750,7 +1772,7 @@ async function watchForResult(gameId, betId, selectionType, allSelections) {
     } catch(e) {
       console.error('Poll error:', e);
     }
-  }, 60000);
+  }, 300000);
 
   activeGamePolls[gameId] = poll;
 }
@@ -2073,7 +2095,7 @@ async function crashStart() {
 
   if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting...'; }
 
-  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Crash game');
+  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Pepea game');
 
   // After await, re-check we're still on crash tab
   const checkEl = document.getElementById('cmult');
@@ -2088,12 +2110,13 @@ async function crashStart() {
   // House edge: 1% of rounds crash at exactly 1.00x (instant)
   // Other rounds: crash = 99 / (100 * rand) — gives realistic distribution:
   //   ~35% crash below 1.5x, ~52% below 2x, ~18% above 5x, ~8% above 10x
-  const r = Math.random();
-  if (r < 0.01) {
-    crashTarget = 1.00; // 1% house edge rounds
-  } else {
-    crashTarget = Math.max(1.01, Math.min(1000, +(99 / (100 * r)).toFixed(2)));
-  }
+  // Generate crash multiplier with 5% house edge
+  // P(multiplier >= x) = (0.95 / x) for x >= 1.01
+  let r = Math.random();
+  let crashTargetCrude = 0.95 / r;
+  crashTarget = Math.max(1.01, Math.min(1000, crashTargetCrude));
+  if (r < 0.01) crashTarget = 1.00; // 1% instant crash for excitement
+  crashTarget = +crashTarget.toFixed(2);
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
   if (cashBtn) { cashBtn.style.display = 'inline-block'; }
@@ -2160,8 +2183,9 @@ async function crashCash() {
   clearInterval(crashInterval);
   crashState = 'idle';
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 200;
-  const winAmount = Math.round(stake * crashMult);
-  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Crash x${crashMult.toFixed(2)}`);
+  const MAX_PAYOUT = 50000; // KSH max single payout
+  const winAmount = Math.min(Math.round(stake * crashMult), MAX_PAYOUT);
+  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Pepea x${crashMult.toFixed(2)}`);
   const m = document.getElementById('cmult');
   if (m) { m.style.color = '#ffc947'; m.style.textShadow = '0 0 30px rgba(255,201,71,0.6)'; }
   const cb = document.getElementById('c-cash');
@@ -2238,7 +2262,7 @@ async function mineStart() {
   const stake = parseFloat(document.getElementById('m-stake').value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
-  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Mines game');
+  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Kasongo game');
   mineStake = stake; mineRevealed = 0; mineMult = 1; mineActive = true;
   mineGrid = Array(16).fill('hidden');
   const bombs = [...Array(16).keys()].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -2255,7 +2279,16 @@ async function mineReveal(i) {
     document.getElementById('m-msg').innerHTML = `<span class="msg lose">-KSH ${mineStake.toLocaleString()}</span>`;
   } else {
     mineGrid[i] = 'gem'; mineRevealed++;
-    mineMult = +(1 + mineRevealed * 0.35).toFixed(2);
+    // Multiplier table with 5% house edge (3 bombs in 16 cells)
+    const minesMultipliers = {
+      1: 1.16, 2: 1.45, 3: 1.86, 4: 2.42, 5: 3.24,
+      6: 4.48, 7: 6.44, 8: 9.73, 9: 15.7, 10: 27.2
+    };
+    if (mineRevealed in minesMultipliers) {
+      mineMult = minesMultipliers[mineRevealed];
+    } else {
+      mineMult = +(1 + mineRevealed * 0.25).toFixed(2); // fallback >10 gems
+    }
     renderMines();
   }
 }
@@ -2264,8 +2297,9 @@ async function mineCash() {
   if (!mineActive) return;
   if (mineRevealed < 3) return showToast('Reveal at least 3 gems before cashing out!');
   mineActive = false;
-  const win = Math.round(mineStake * mineMult);
-  await updateBalance(userBalance + win, 'bet_win', mineStake, `Mines cashed out at ${mineMult.toFixed(2)}x`);
+  const MAX_PAYOUT = 50000; // KSH max single payout
+  const win = Math.min(Math.round(mineStake * mineMult), MAX_PAYOUT);
+  await updateBalance(userBalance + win, 'bet_win', mineStake, `Kasongo cashed out at ${mineMult.toFixed(2)}x`);
   renderMines();
   document.getElementById('m-msg').innerHTML = `<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
 }
