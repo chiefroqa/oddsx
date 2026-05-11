@@ -147,6 +147,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div class="nav-item" onclick="showPage('bets')" data-page="bets">🎫 Bets</div>
     <div class="nav-item" onclick="showPage('payouts')" data-page="payouts">💸 Payouts <span class="nav-badge" id="payouts-badge" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('broadcast')" data-page="broadcast">📣 Broadcast</div>
+    <div class="nav-item" onclick="showPage('challenges')" data-page="challenges">⚔️ Challenges <span class="nav-badge" id="challenges-badge" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('transactions')" data-page="transactions">📋 Transactions</div>
     <div class="sidebar-bottom">
       <div class="admin-email" id="admin-email"></div>
@@ -319,6 +320,36 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
+    <!-- CHALLENGES -->
+    <div class="page" id="page-challenges">
+      <div class="page-title">P2P Challenges</div>
+      <div class="page-sub">All player vs player challenges across the platform</div>
+      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="ch-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value gold" id="ch-open">—</div></div>
+        <div class="stat-card"><div class="stat-label">Matched</div><div class="stat-value" style="color:#7b8cff" id="ch-matched">—</div></div>
+        <div class="stat-card"><div class="stat-label">Settled</div><div class="stat-value green" id="ch-settled">—</div></div>
+        <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value green" id="ch-revenue">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title" id="ch-table-title">All Challenges</div>
+          <div style="display:flex;gap:8px">
+            <select id="ch-filter" onchange="filterChallenges()" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 10px;outline:none">
+              <option value="all">All</option>
+              <option value="open">Open</option>
+              <option value="matched">Matched</option>
+              <option value="settled">Settled</option>
+              <option value="cleared">Cleared</option>
+              <option value="declined">Declined</option>
+            </select>
+            <button class="refresh-btn" onclick="loadChallenges()">Refresh</button>
+          </div>
+        </div>
+        <div id="challenges-table"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
+      </div>
+    </div>
+
     <!-- TRANSACTIONS -->
     <div class="page" id="page-transactions">
       <div class="page-title">Transactions</div>
@@ -379,6 +410,7 @@ async function adminLogin() {
   loadDashboard(); // Only load dashboard on login — everything else loads on tab click
   // Poll for new pending items every 60s
   setInterval(() => { loadDashboard(); checkBadges(); }, 60000);
+  checkChallengeBadge();
 }
 
 async function adminSignOut() {
@@ -400,6 +432,7 @@ function showPage(id) {
   if (id === 'transactions') loadTransactions();
   if (id === 'payouts') loadPayouts();
   if (id === 'broadcast') loadBroadcastUsers();
+  if (id === 'challenges') loadChallenges();
 }
 
 // ── TOAST ──
@@ -437,6 +470,12 @@ async function loadDashboard() {
   renderDepositRows(pendingRes.data || [], 'dash-deposits');
   renderWithdrawalRows(withdrawRes.data || [], 'dash-withdrawals');
   checkBadges();
+}
+
+async function checkChallengeBadge() {
+  const { count } = await sb.from('p2p_challenges').select('id', { count: 'exact' }).in('status', ['open','matched']);
+  const badge = document.getElementById('challenges-badge');
+  if (badge) { badge.textContent = count || 0; badge.style.display = (count||0) > 0 ? 'inline' : 'none'; }
 }
 
 async function checkBadges() {
@@ -952,6 +991,103 @@ async function sendTestMessage() {
   } catch (err) {
     toast('Failed: ' + err.message);
   }
+}
+
+// ── CHALLENGES ──
+let allChallenges = [];
+
+async function loadChallenges() {
+  const el = document.getElementById('challenges-table');
+  el.innerHTML = '<div class="loading-row"><span class="loading"></span>Loading...</div>';
+
+  const { data } = await sb.from('p2p_challenges')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  allChallenges = data || [];
+
+  // Stats
+  const open     = allChallenges.filter(c => c.status === 'open').length;
+  const matched  = allChallenges.filter(c => c.status === 'matched').length;
+  const settled  = allChallenges.filter(c => c.status === 'settled').length;
+  const revenue  = allChallenges.filter(c => c.status === 'settled')
+    .reduce((s, c) => s + ((c.stake * 2) - (c.winnings || 0)), 0);
+
+  document.getElementById('ch-total').textContent   = allChallenges.length;
+  document.getElementById('ch-open').textContent    = open;
+  document.getElementById('ch-matched').textContent = matched;
+  document.getElementById('ch-settled').textContent = settled;
+  document.getElementById('ch-revenue').textContent = 'KSH ' + Math.round(revenue).toLocaleString();
+
+  // Badge for open + matched
+  const badge = document.getElementById('challenges-badge');
+  const active = open + matched;
+  badge.textContent = active;
+  badge.style.display = active > 0 ? 'inline' : 'none';
+
+  renderChallengesTable(allChallenges);
+}
+
+function filterChallenges() {
+  const filter = document.getElementById('ch-filter').value;
+  const filtered = filter === 'all' ? allChallenges : allChallenges.filter(c => c.status === filter);
+  document.getElementById('ch-table-title').textContent =
+    filter === 'all' ? 'All Challenges' : filter.charAt(0).toUpperCase() + filter.slice(1) + ' Challenges';
+  renderChallengesTable(filtered);
+}
+
+function renderChallengesTable(rows) {
+  const el = document.getElementById('challenges-table');
+  if (!rows.length) { el.innerHTML = '<div class="loading-row">No challenges found</div>'; return; }
+
+  const statusColors = {
+    open:     'var(--gold)',
+    matched:  '#7b8cff',
+    settled:  'var(--accent)',
+    cleared:  'var(--muted)',
+    declined: 'var(--danger)',
+  };
+
+  el.innerHTML = `<table>
+    <tr>
+      <th>Date</th>
+      <th>Challenger</th>
+      <th>Their Pick</th>
+      <th>Opponent</th>
+      <th>Their Pick</th>
+      <th>Stake Each</th>
+      <th>Pot</th>
+      <th>Status</th>
+      <th>Result</th>
+      <th>Revenue</th>
+    </tr>
+    ${rows.map(c => {
+      const pot = c.stake * 2;
+      const houseRev = c.status === 'settled' ? Math.round(pot - (c.winnings || 0)) : 0;
+      const statusColor = statusColors[c.status] || 'var(--muted)';
+      const resultBadge = c.status === 'settled'
+        ? `<span style="color:var(--accent);font-size:11px">✅ ${c.result || '—'}</span>`
+        : c.status === 'cleared'
+        ? `<span style="color:var(--muted);font-size:11px">🤝 No winner</span>`
+        : '—';
+
+      return `<tr>
+        <td style="font-size:11px;color:var(--muted)">${fmtDate(c.created_at)}</td>
+        <td style="font-size:12px">${c.challenger_name || c.challenger_id?.slice(0,8)}</td>
+        <td style="font-size:11px;color:var(--accent)">${c.challenger_label || '—'}</td>
+        <td style="font-size:12px">${c.acceptor_name || '<span style="color:var(--muted)">Waiting...</span>'}</td>
+        <td style="font-size:11px;color:var(--gold)">${c.acceptor_label || '—'}</td>
+        <td style="font-weight:600">KSH ${(c.stake||0).toLocaleString()}</td>
+        <td>KSH ${pot.toLocaleString()}</td>
+        <td><span style="font-size:10px;font-weight:700;color:${statusColor};background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:20px;text-transform:uppercase">${c.status}</span></td>
+        <td>${resultBadge}</td>
+        <td style="color:${houseRev > 0 ? 'var(--accent)' : 'var(--muted)'}">
+          ${houseRev > 0 ? 'KSH ' + houseRev.toLocaleString() : '—'}
+        </td>
+      </tr>`;
+    }).join('')}
+  </table>`;
 }
 
 // ── TRANSACTIONS ──
