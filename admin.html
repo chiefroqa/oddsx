@@ -442,6 +442,13 @@ async function loadDashboard() {
     sb.from('withdrawal_requests').select('*').eq('status','pending').order('created_at', { ascending:false }),
   ]);
 
+  // ── DEBUG: Log errors from every query ──
+  console.log('── DASHBOARD DEBUG ──');
+  [['profiles', usersRes], ['deposits(approved)', depositsRes], ['bets', betsRes], ['deposits(pending)', pendingRes], ['withdrawals', withdrawRes]].forEach(([name, res]) => {
+    if (res.error) console.error(`❌ ${name}:`, res.error.message, res.error);
+    else console.log(`✅ ${name}: ${res.data?.length ?? 0} rows`);
+  });
+
   document.getElementById('stat-users').textContent = usersRes.count || usersRes.data?.length || 0;
   const totalDep = depositsRes.data?.reduce((s,r) => s + (r.amount||0), 0) || 0;
   document.getElementById('stat-deposits').textContent = fmt(totalDep);
