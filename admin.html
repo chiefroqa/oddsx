@@ -452,13 +452,14 @@ function fmtDate(d) {
 }
 
 // ── DASHBOARD ──
+// ── DASHBOARD ──
 async function loadDashboard() {
   const results = await Promise.allSettled([
-    sb.from('profiles').select('id, balance', { count: 'exact' }),
-    sb.from('deposit_requests').select('amount').eq('status', 'approved'),
-    sb.from('bets').select('id', { count: 'exact' }),
-    sb.from('deposit_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
-    sb.from('withdrawal_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
+    sb.from('profiles').select('id, balance', { count:'exact' }),
+    sb.from('deposit_requests').select('amount').eq('status','approved'),
+    sb.from('bets').select('id', { count:'exact' }),
+    sb.from('deposit_requests').select('*').eq('status','pending').order('created_at', { ascending:false }),
+    sb.from('withdrawal_requests').select('*').eq('status','pending').order('created_at', { ascending:false }),
   ]);
 
   const usersRes = results[0].status === 'fulfilled' ? results[0].value : { data: [], count: 0 };
@@ -468,29 +469,41 @@ async function loadDashboard() {
   const withdrawRes = results[4].status === 'fulfilled' ? results[4].value : { data: [] };
 
   document.getElementById('stat-users').textContent = usersRes.count || usersRes.data?.length || 0;
-  const totalDep = depositsRes.data?.reduce((s, r) => s + (r.amount || 0), 0) || 0;
+  const totalDep = depositsRes.data?.reduce((s,r) => s + (r.amount||0), 0) || 0;
   document.getElementById('stat-deposits').textContent = fmt(totalDep);
   document.getElementById('stat-pending').textContent = pendingRes.data?.length || 0;
   document.getElementById('stat-bets').textContent = betsRes.count || betsRes.data?.length || 0;
 
   renderDepositRows(pendingRes.data || [], 'dash-deposits');
   renderWithdrawalRows(withdrawRes.data || [], 'dash-withdrawals');
-  checkBadges();
+  await checkBadges(); // ensure it exists
 
   const failed = results.filter(r => r.status === 'rejected').length;
   if (failed > 0) toast(`⚠️ ${failed} data sources failed. Refresh page.`);
 }
 
+async function checkBadges() {
+  try {
+    const [dep, wit] = await Promise.all([
+      sb.from('deposit_requests').select('id', { count:'exact' }).eq('status','pending'),
+      sb.from('withdrawal_requests').select('id', { count:'exact' }).eq('status','pending'),
+    ]);
+    const db = document.getElementById('deposit-badge');
+    const wb = document.getElementById('withdraw-badge');
+    const dc = dep.count || 0, wc = wit.count || 0;
+    if (db) { db.textContent = dc; db.style.display = dc > 0 ? 'inline' : 'none'; }
+    if (wb) { wb.textContent = wc; wb.style.display = wc > 0 ? 'inline' : 'none'; }
+  } catch(e) { console.warn(e); }
+}
+
 async function checkChallengeBadge() {
   try {
-    const { count, error } = await sb.from('p2p_challenges').select('id', { count: 'exact' }).in('status', ['open','matched']);
-    if (error) throw error;
+    const { count } = await sb.from('p2p_challenges').select('id', { count:'exact' }).in('status',['open','matched']);
     const badge = document.getElementById('challenges-badge');
-    if (badge) { badge.textContent = count || 0; badge.style.display = (count||0) > 0 ? 'inline' : 'none'; }
-  } catch (err) {
-    console.warn('Challenge badge not available:', err.message);
-    // Optionally hide the Challenges nav item
-    document.querySelector('[data-page="challenges"]')?.style?.setProperty('display', 'none');
+    if (badge) { badge.textContent = count || 0; badge.style.display = count ? 'inline' : 'none'; }
+  } catch(e) { 
+    const badge = document.getElementById('challenges-badge');
+    if (badge) badge.style.display = 'none';
   }
 }
 
