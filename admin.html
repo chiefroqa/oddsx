@@ -103,6 +103,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .transaction-row{padding:10px 32px;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.04);display:grid;grid-template-columns:120px 100px 150px 80px 80px;gap:16px;align-items:center}
 .transaction-row:last-child{border-bottom:none}
 .loading{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.1);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+.loading-row{padding:16px;font-size:13px;color:var(--muted)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* MODAL */
@@ -284,42 +285,6 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
-    <!-- PAYOUTS -->
-    <div class="page" id="page-payouts">
-      <div class="page-title">Pending Payouts</div>
-      <div class="page-sub">Won bets that have not yet been paid out to users</div>
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title" id="payouts-title">Unpaid Winnings</div>
-          <button class="refresh-btn" onclick="loadPayouts()">Refresh</button>
-        </div>
-        <div id="payouts-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 0 4px"></div>
-        <div id="payouts-table"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
-      </div>
-    </div>
-
-    <!-- BROADCAST -->
-    <div class="page" id="page-broadcast">
-      <div class="page-title">WhatsApp Broadcast</div>
-      <div class="page-sub">Send messages to all opted-in users via WhatsApp</div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-title" style="margin-bottom:16px">Compose Message</div>
-        <div class="field">
-          <label>Message</label>
-          <textarea id="broadcast-msg" placeholder="e.g. 🔥 50% deposit bonus this weekend! Deposit now at oddsx.co.ke" style="width:100%;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:Barlow,sans-serif;font-size:14px;padding:12px;min-height:100px;resize:vertical;outline:none"></textarea>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <button class="action-btn approve" onclick="sendBroadcast()" id="broadcast-btn" style="padding:10px 20px;font-size:13px">📣 Send Broadcast</button>
-          <button class="action-btn" onclick="sendTestMessage()" style="padding:10px 20px;font-size:13px;background:transparent;border:1px solid var(--border)">🧪 Test (Send to me)</button>
-          <span id="broadcast-status" style="font-size:12px;color:var(--muted)"></span>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title" style="margin-bottom:12px">Opted-in Users</div>
-        <div id="broadcast-users"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
-      </div>
-    </div>
-
     <!-- CHALLENGES -->
     <div class="page" id="page-challenges">
       <div class="page-title">P2P Challenges</div>
@@ -379,7 +344,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 <script>
 // ── CONFIG ──
 const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_1gtS15T5Te2VL7UmuAI8Gg_UeX6XB_q';
+// IMPORTANT: Replace with your real Supabase anon key (JWT starting with eyJ...)
+// Find it at: Supabase Dashboard > Settings > API > anon/public key
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52Z254aWp2ZXVpbWdmbXR1cWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDMyNzcsImV4cCI6MjA5MjcxOTI3N30.ve3una7vg7QUKwvDYYjD5fSHY3bv12qFRLXb-Ipz7Pc';
 // List of email addresses allowed to access admin panel
 const ADMIN_EMAILS = ['chrismoegi@gmail.com'];
 
@@ -387,6 +354,20 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let adminUser = null;
 let allUsers = [];
 let editingUserId = null;
+
+// ── SESSION RESTORE ──
+(async function restoreSession() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && ADMIN_EMAILS.includes(session.user.email)) {
+    adminUser = session.user;
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('admin-app').style.display = 'block';
+    document.getElementById('admin-email').textContent = session.user.email;
+    loadDashboard();
+    setInterval(() => { loadDashboard(); checkBadges(); }, 60000);
+    checkChallengeBadge();
+  }
+})();
 
 // ── AUTH ──
 async function adminLogin() {
@@ -876,17 +857,17 @@ async function loadPayouts() {
     <div style="background:rgba(255,71,87,0.1);border:1px solid rgba(255,71,87,0.2);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Unpaid</div>
       <div style="font-size:18px;font-weight:700;color:#ff4757">${unpaid.length} bets</div>
-      <div style="font-size:12px;color:#ff4757">KSH ${fmt(totalUnpaid)}</div>
+            <div style="font-size:12px;color:#ff4757">${fmt(totalUnpaid)}</div>
     </div>
     <div style="background:rgba(0,229,160,0.1);border:1px solid rgba(0,229,160,0.2);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Paid Out</div>
       <div style="font-size:18px;font-weight:700;color:var(--accent)">${paid.length} bets</div>
-      <div style="font-size:12px;color:var(--accent)">KSH ${fmt(totalPaid)}</div>
+      <div style="font-size:12px;color:var(--accent)">${fmt(totalPaid)}</div>
     </div>
     <div style="background:var(--g3);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Total Won</div>
       <div style="font-size:18px;font-weight:700">${bets.length} bets</div>
-      <div style="font-size:12px;color:var(--muted)">KSH ${fmt(totalUnpaid + totalPaid)}</div>
+      <div style="font-size:12px;color:var(--muted)">${fmt(totalUnpaid + totalPaid)}</div>
     </div>`;
 
   if (!unpaid.length) {
