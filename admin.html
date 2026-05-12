@@ -342,6 +342,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </div>
 
 <script>
+console.log('🟢 ADMIN SCRIPT LOADED');
 // ── CONFIG ──
 const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
 // IMPORTANT: Replace with your real Supabase anon key (JWT starting with eyJ...)
@@ -357,15 +358,24 @@ let editingUserId = null;
 
 // ── SESSION RESTORE ──
 (async function restoreSession() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session && ADMIN_EMAILS.includes(session.user.email)) {
-    adminUser = session.user;
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('admin-app').style.display = 'block';
-    document.getElementById('admin-email').textContent = session.user.email;
-    loadDashboard();
-    setInterval(() => { loadDashboard(); checkBadges(); }, 60000);
-    checkChallengeBadge();
+  try {
+    console.log('🔄 Checking session...');
+    const { data: { session }, error } = await sb.auth.getSession();
+    if (error) { console.error('❌ Session error:', error); return; }
+    if (session && ADMIN_EMAILS.includes(session.user.email)) {
+      console.log('✅ Session restored for', session.user.email);
+      adminUser = session.user;
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('admin-app').style.display = 'block';
+      document.getElementById('admin-email').textContent = session.user.email;
+      loadDashboard();
+      setInterval(() => { loadDashboard(); checkBadges(); }, 60000);
+      checkChallengeBadge();
+    } else {
+      console.log('ℹ️ No admin session found, showing login');
+    }
+  } catch (e) {
+    console.error('❌ restoreSession crashed:', e);
   }
 })();
 
@@ -434,6 +444,8 @@ function fmtDate(d) {
 
 // ── DASHBOARD ──
 async function loadDashboard() {
+  try {
+  console.log('🔄 loadDashboard() called...');
   const [usersRes, depositsRes, betsRes, pendingRes, withdrawRes] = await Promise.all([
     sb.from('profiles').select('id, balance', { count:'exact' }),
     sb.from('deposit_requests').select('amount').eq('status','approved'),
@@ -455,9 +467,13 @@ async function loadDashboard() {
   document.getElementById('stat-pending').textContent = pendingRes.data?.length || 0;
   document.getElementById('stat-bets').textContent = betsRes.count || betsRes.data?.length || 0;
 
-  renderDepositRows(pendingRes.data || [], 'dash-deposits');
+    renderDepositRows(pendingRes.data || [], 'dash-deposits');
   renderWithdrawalRows(withdrawRes.data || [], 'dash-withdrawals');
   checkBadges();
+  } catch (e) {
+    console.error('❌ loadDashboard crashed:', e);
+    document.getElementById('dash-deposits').innerHTML = '<div class="loading-row" style="color:var(--danger)">Error: ' + e.message + '</div>';
+  }
 }
 
 async function checkChallengeBadge() {
