@@ -477,21 +477,16 @@ async function loadDashboard() {
 }
 
 async function checkChallengeBadge() {
-  const { count } = await sb.from('p2p_challenges').select('id', { count: 'exact' }).in('status', ['open','matched']);
-  const badge = document.getElementById('challenges-badge');
-  if (badge) { badge.textContent = count || 0; badge.style.display = (count||0) > 0 ? 'inline' : 'none'; }
-}
-
-async function checkBadges() {
-  const [dep, wit] = await Promise.all([
-    sb.from('deposit_requests').select('id', { count:'exact' }).eq('status','pending'),
-    sb.from('withdrawal_requests').select('id', { count:'exact' }).eq('status','pending'),
-  ]);
-  const db = document.getElementById('deposit-badge');
-  const wb = document.getElementById('withdraw-badge');
-  const dc = dep.count || 0, wc = wit.count || 0;
-  db.textContent = dc; db.style.display = dc > 0 ? 'inline' : 'none';
-  wb.textContent = wc; wb.style.display = wc > 0 ? 'inline' : 'none';
+  try {
+    const { count, error } = await sb.from('p2p_challenges').select('id', { count: 'exact' }).in('status', ['open','matched']);
+    if (error) throw error;
+    const badge = document.getElementById('challenges-badge');
+    if (badge) { badge.textContent = count || 0; badge.style.display = (count||0) > 0 ? 'inline' : 'none'; }
+  } catch (err) {
+    console.warn('Challenge badge not available:', err.message);
+    // Optionally hide the Challenges nav item
+    document.querySelector('[data-page="challenges"]')?.style?.setProperty('display', 'none');
+  }
 }
 
 // ── DEPOSITS ──
