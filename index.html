@@ -673,7 +673,7 @@ async function updateBalance(newBalance, txType, txAmount, txLabel) {
 }
 
 // ─── TABS ───
-function showTab(t) {
+async function showTab(t) {
   // Check auth for protected tabs
   if ((t === 'wallet' || t === 'history' || t === 'p2p') && !currentUser) {
     showToast('Sign in to access ' + t);
@@ -686,9 +686,9 @@ function showTab(t) {
   const hasSlip = Object.keys(selections).length > 0;
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
-  if (t==='wallet') renderWallet();
-  if (t==='history') renderHistory();
-  if (t==='p2p') renderP2PChallenges();
+  if (t==='wallet') await renderWallet();
+  if (t==='history') await renderHistory();
+  if (t==='p2p') await renderP2PChallenges();
 }
 
 // ─── TOAST ───
@@ -2147,7 +2147,7 @@ async function crashStart() {
       clearInterval(crashInterval);
       crashState = 'crashed';
 
-      m.textContent = 'PEPEAED ' + crashMult.toFixed(2) + 'x';
+      m.textContent = 'PEPEAD ' + crashMult.toFixed(2) + 'x';
       m.style.color = '#ff6b35';
       m.style.textShadow = '0 0 40px rgba(255,107,53,0.8)';
       drawCrashCanvas(true);
@@ -2440,6 +2440,7 @@ async function checkAndSettlePendingBets() {
 }
 
 async function renderWallet() {
+  document.getElementById('tab-wallet').innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
   await refreshBalance();
   const el = document.getElementById('tab-wallet');
   el.innerHTML = `
