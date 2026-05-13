@@ -419,20 +419,20 @@ async function adminSignOut() {
 }
 
 // ── NAVIGATION ──
-function showPage(id) {
+async function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   document.querySelector(`[data-page="${id}"]`).classList.add('active');
-  if (id === 'deposits') loadDeposits();
-  if (id === 'withdrawals') loadWithdrawals();
-  if (id === 'users') loadUsers();
-  if (id === 'bets') loadBets();
-  if (id === 'earnings') loadEarnings();
-  if (id === 'transactions') loadTransactions();
-  if (id === 'payouts') loadPayouts();
-  if (id === 'broadcast') loadBroadcastUsers();
-  if (id === 'challenges') loadChallenges();
+  if (id === 'deposits')    await loadDeposits();
+  if (id === 'withdrawals') await loadWithdrawals();
+  if (id === 'users')       await loadUsers();
+  if (id === 'bets')        await loadBets();
+  if (id === 'earnings')    await loadEarnings();
+  if (id === 'transactions') await loadTransactions();
+  if (id === 'payouts')     await loadPayouts();
+  if (id === 'broadcast')   await loadBroadcastUsers();
+  if (id === 'challenges')  await loadChallenges();
 }
 
 // ── TOAST ──
@@ -509,6 +509,7 @@ async function checkChallengeBadge() {
 
 // ── DEPOSITS ──
 async function loadDeposits() {
+  document.getElementById('deposits-table').innerHTML = '<div class="loading-row"><span class="loading"></span> Loading...</div>';
   const { data } = await sb.from('deposit_requests').select('*').order('created_at', { ascending:false }).limit(100);
   renderDepositRows(data || [], 'deposits-table');
 }
@@ -559,6 +560,7 @@ async function rejectDeposit(id) {
 
 // ── WITHDRAWALS ──
 async function loadWithdrawals() {
+  document.getElementById('withdrawals-table').innerHTML = '<div class="loading-row"><span class="loading"></span> Loading...</div>';
   const { data } = await sb.from('withdrawal_requests').select('*').order('created_at', { ascending:false }).limit(100);
   renderWithdrawalRows(data || [], 'withdrawals-table');
 }
@@ -590,6 +592,7 @@ async function markWithdrawalPaid(id) {
 
 // ── USERS ──
 async function loadUsers() {
+  document.getElementById('users-table').innerHTML = '<div class="loading-row"><span class="loading"></span> Loading...</div>';
   const { data } = await sb.from('profiles').select('*').order('created_at', { ascending:false });
   allUsers = data || [];
   renderUsers(allUsers);
@@ -1109,6 +1112,7 @@ function renderChallengesTable(rows) {
 
 // ── TRANSACTIONS ──
 async function loadTransactions() {
+  document.getElementById('transactions-table').innerHTML = '<div class="loading-row"><span class="loading"></span> Loading...</div>';
   const { data } = await sb.from('transactions').select('*, profiles(email)').order('created_at', { ascending:false }).limit(500);
   const el = document.getElementById('transactions-table');
   if (!data?.length) { el.innerHTML = '<div class="loading-row">No transactions yet</div>'; return; }
