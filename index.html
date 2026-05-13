@@ -2114,7 +2114,6 @@ async function crashStart() {
   let r = Math.random();
   let crashTargetCrude = 0.95 / r;
   crashTarget = Math.max(1.01, Math.min(1000, crashTargetCrude));
-  if (r < 0.01) crashTarget = 1.00; // 1% instant crash for excitement
   crashTarget = +crashTarget.toFixed(2);
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
