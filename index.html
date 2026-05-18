@@ -2849,6 +2849,9 @@ async function submitManualDeposit() {
   btn.disabled = false; btn.textContent = 'Submit Deposit Request';
 }
 
+const ADMIN_PHONE = '254107129273';
+const WA_URL = 'https://oddsx-whatsapp-production.up.railway.app';
+
 async function initiateWithdraw() {
   const phone = document.getElementById('withdraw-phone').value.trim();
   const amount = parseFloat(document.getElementById('withdraw-amount').value);
@@ -2858,7 +2861,6 @@ async function initiateWithdraw() {
   const btn = document.getElementById('withdraw-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Submitting...';
   try {
-    // Deduct balance immediately and create withdrawal request for admin
     const newBal = userBalance - amount;
     await updateBalance(newBal, 'withdrawal', amount, 'M-Pesa withdrawal (pending)');
     await sb.from('withdrawal_requests').insert({
@@ -2868,6 +2870,28 @@ async function initiateWithdraw() {
       phone,
       status: 'pending',
     });
+
+    // Notify admin on WhatsApp instantly
+    const now = new Date().toLocaleString('en-KE', {
+      timeZone: 'Africa/Nairobi', hour12: true, dateStyle: 'medium', timeStyle: 'short'
+    });
+    const normalizedPhone = phone.startsWith('0') ? '254' + phone.slice(1) : phone;
+    const adminMsg = [
+      '💸 *Withdrawal Request*',
+      '',
+      '👤 User: ' + currentUser.email,
+      '📱 Send to: ' + normalizedPhone,
+      '💰 Amount: KSH ' + amount.toLocaleString(),
+      '🕐 Time: ' + now,
+      '',
+      'Send via M-Pesa then mark paid in admin.'
+    ].join('\n');
+    fetch(WA_URL + '/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: ADMIN_PHONE, message: adminMsg })
+    }).catch(e => console.log('Admin WA notify failed:', e.message));
+
     closeModal('withdraw-modal');
     showToast('✅ Withdrawal request submitted! Will be sent within 15 minutes.');
     renderWallet();
