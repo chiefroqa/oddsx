@@ -463,14 +463,11 @@ async function init() {
     renderMines();
   }
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) {
-      await loadUser(session.user);
-      checkForChallenge(); // Check if user arrived via a challenge link
-    }
+    if (session) await loadUser(session.user); // loadUser calls checkForChallenge internally
     else currentUser = null; // Stay in guest mode, don't hide app
   });
-  // Also check for challenge link on initial load (guest viewing challenge)
-  setTimeout(checkForChallenge, 1500);
+  // For guests arriving via challenge link (not logged in), check after app renders
+  if (!session) setTimeout(checkForChallenge, 800);
 }
 
 async function loadUser(user) {
@@ -501,15 +498,8 @@ async function loadUser(user) {
   renderMines();
   resumePendingBets();
 
-  // If user just logged in to accept a challenge, show the modal now
-  if (window._pendingChallengeAfterLogin) {
-    const challenge = window._pendingChallengeAfterLogin;
-    window._pendingChallengeAfterLogin = null;
-    setTimeout(() => {
-      pendingAcceptChallenge = challenge;
-      showAcceptModal(challenge);
-    }, 800); // small delay so app finishes rendering first
-  }
+  // If user arrived via a challenge link, pick it up from sessionStorage
+  setTimeout(checkForChallenge, 800);
 }
 
 function showAuthScreen() {
@@ -1382,30 +1372,44 @@ async function confirmChallenge() {
 }
 
 async function checkForChallenge() {
+  // Check URL param first, then fall back to sessionStorage (survives login redirects)
   const params = new URLSearchParams(window.location.search);
-  const challengeId = params.get('challenge');
+  let challengeId = params.get('challenge');
+  if (challengeId) {
+    // Persist to sessionStorage so it survives auth redirects / page reloads
+    sessionStorage.setItem('pendingChallengeId', challengeId);
+    // Clean URL now that we've saved the ID
+    window.history.replaceState({}, '', window.location.pathname);
+  } else {
+    // Try sessionStorage fallback (user just logged in or was redirected)
+    challengeId = sessionStorage.getItem('pendingChallengeId');
+  }
   if (!challengeId) return;
-
-  // Keep challenge ID in memory but clean URL
-  window.history.replaceState({}, '', window.location.pathname);
 
   // Load challenge from DB
   const { data: challenge } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
-  if (!challenge) { showToast('Challenge not found or expired'); return; }
-  if (challenge.status !== 'open') { showToast('This challenge has already been accepted or expired'); return; }
+  if (!challenge) {
+    sessionStorage.removeItem('pendingChallengeId');
+    showToast('Challenge not found or expired');
+    return;
+  }
+  if (challenge.status !== 'open') {
+    sessionStorage.removeItem('pendingChallengeId');
+    showToast('This challenge has already been accepted or expired');
+    return;
+  }
 
   pendingAcceptChallenge = challenge;
 
-  // If not signed in — show auth screen with a message, then auto-show modal after login
+  // If not signed in — show auth screen, challenge will load after login via loadUser()
   if (!currentUser) {
     showToast('Sign in to accept this challenge');
-    // Store challenge so we can show it after login
-    window._pendingChallengeAfterLogin = challenge;
     showAuthScreen();
     return;
   }
 
-  // Already signed in — show modal immediately
+  // Signed in — clear storage and show modal
+  sessionStorage.removeItem('pendingChallengeId');
   showAcceptModal(challenge);
 }
 
