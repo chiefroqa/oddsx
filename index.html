@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (app) app.style.display = 'block';
 });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onerror="loadSupabaseFallback()"></script>
 <script>
 function loadSupabaseFallback() {
@@ -162,7 +162,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .sport-chip.active{background:rgba(0,229,160,0.12);border-color:var(--accent);color:var(--accent)}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
 .hist-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
-.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:font-family:'Barlow Condensed',sans-serif}
+.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif}
 
 /* ── CHALLENGE HUB ── */
 .ch-hub{display:flex;flex-direction:column;gap:14px;padding:0}
@@ -318,9 +318,8 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div class="header">
     <div class="logo">ODDS<span>X</span></div>
     <div class="header-right">
-      <div class="balance-pill" id="balance-pill" onclick="showTab('wallet')" style="display:none">Bal: <b id="bal-display">KSH 0</b></div>
-      <button id="signin-btn" onclick="showAuthScreen()" style="background:var(--accent);color:#000;border:none;border-radius:20px;padding:6px 16px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;cursor:pointer;display:block">Sign In</button>
-      <div class="avatar" id="avatar-btn" onclick="toggleDropdown()" style="display:none">
+      <div class="balance-pill" onclick="showTab('wallet')">Bal: <b id="bal-display">KSH 0</b></div>
+      <div class="avatar" id="avatar-btn" onclick="toggleDropdown()">
         <span id="avatar-init">?</span>
         <div class="dropdown" id="dropdown">
           <div class="dd-email" id="dd-email"></div>
@@ -481,6 +480,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div id="dr-rerolls" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
     <div id="dr-result-line" style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-bottom:16px"></div>
     <div id="dr-picks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px"></div>
+    <button id="dr-play-again-btn" onclick="playDiceAgain()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🎲 Play Again</button>
     <button onclick="closeModal('dice-result-modal')" style="width:100%;background:var(--g3);border:none;border-radius:8px;color:var(--muted);padding:10px;cursor:pointer;font-size:13px">Close</button>
   </div>
 </div>
@@ -555,23 +555,13 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 // ─────────────────────────────────────────
 const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52Z254aWp2ZXVpbWdmbXR1cWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDMyNzcsImV4cCI6MjA5MjcxOTI3N30.ve3una7vg7QUKwvDYYjD5fSHY3bv12qFRLXb-Ipz7Pc';
-// Initialize Supabase immediately — CDN script is loaded synchronously above
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let sb = null;
 
-// ── Capture URL params immediately before any async code or history changes ──
-(function captureUrlParams() {
-  const params = new URLSearchParams(window.location.search);
-  const diceId = params.get('dice');
-  const challengeId = params.get('challenge');
-  if (diceId) {
-    sessionStorage.setItem('pendingDiceId', diceId);
-    window.history.replaceState({}, '', window.location.pathname);
+function initSupabaseClient() {
+  if (!sb && typeof supabase !== 'undefined') {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
-  if (challengeId) {
-    sessionStorage.setItem('pendingChallengeId', challengeId);
-    window.history.replaceState({}, '', window.location.pathname);
-  }
-})();
+}
 
 // ─── STATE ───
 let currentUser = null;
@@ -613,84 +603,97 @@ async function withTimeout(promise, ms = 10000) {
   return Promise.race([promise, timeout]);
 }
 
-
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
-  // onAuthStateChange fires INITIAL_SESSION synchronously before getSession resolves on some devices
+  // 1. Check for existing session on load
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await loadUser(session.user);
+  } else {
+    // Render lightweight UI immediately; defer heavy data fetches
+    renderCrash();
+    renderMines();
+    // Defer sports load so initial paint is fast
+    setTimeout(() => { initSports(); }, 700);
+    setTimeout(checkForChallenge, 600);
+  }
+
+  // 2. Listen for login / logout events only
   sb.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+    if (event === 'SIGNED_IN' && session) {
       await loadUser(session.user);
     } else if (event === 'SIGNED_OUT') {
       currentUser = null;
-      _loadedUserId = null;
-      setAuthUI(false);
     }
   });
-
-  // getSession as primary path — fires if onAuthStateChange hasn't resolved it yet
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
-    await loadUser(session.user);
-  } else if (!currentUser) {
-    setAuthUI(false);
-    initSports();
-    renderCrash();
-    renderMines();
-    setTimeout(checkForChallenge, 400);
-  }
 }
 
-let _loadedUserId = null;
-
 async function loadUser(user) {
-  // Prevent re-running for the same user (e.g. INITIAL_SESSION + getSession both fire)
-  if (_loadedUserId === user.id) return;
-  _loadedUserId = user.id;
+  // Set minimal user state immediately so UI can update fast
   currentUser = user;
-  let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
-  if (!profile) {
-    await sb.from('profiles').insert({
-      id: user.id, email: user.email,
-      full_name: user.user_metadata?.full_name || '',
-      phone: user.user_metadata?.phone || null,
-      whatsapp_optin: true,
-      balance: 200
-    });
-    ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
-  }
-  // Cache phone on window so deposit modal can pre-fill it
-  window.userPhone = profile?.phone || null;
-  userBalance = profile?.balance || 0;
-  const initials = (profile?.full_name || user.email || '?')[0].toUpperCase();
+  const initials = (user.user_metadata?.full_name || user.email || '?')[0].toUpperCase();
   document.getElementById('avatar-init').textContent = initials;
-  document.getElementById('dd-email').textContent = user.email;
+  document.getElementById('dd-email').textContent = user.email || '';
+  // Close auth modal after successful login and show main app
   document.getElementById('auth-screen').classList.remove('show-modal');
   document.getElementById('main-app').style.display = 'block';
-  setAuthUI(true);
-  updateBalanceDisplay();
-  initSports();
+
+  // Fetch profile in background with a timeout to avoid blocking the UI
+  (async () => {
+    try {
+      const { data: profile, error } = await withTimeout(
+        sb.from('profiles').select('full_name,phone,whatsapp_optin,balance').eq('id', user.id).maybeSingle(), 8000
+      );
+      if (error) throw error;
+      if (!profile) {
+        await sb.from('profiles').insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || '',
+          phone: user.user_metadata?.phone || null,
+          whatsapp_optin: true,
+          balance: 200
+        });
+        const { data: newProfile } = await sb.from('profiles').select('full_name,phone,whatsapp_optin,balance').eq('id', user.id).maybeSingle();
+        window.userPhone = newProfile?.phone || null;
+        userBalance = newProfile?.balance || 0;
+      } else {
+        window.userPhone = profile?.phone || null;
+        userBalance = profile?.balance || 0;
+      }
+      updateBalanceDisplay();
+    } catch (e) {
+      console.warn('Profile load slow or failed:', e?.message || e);
+    }
+  })();
+
+  // Render light UI immediately; defer heavy calls to avoid blocking
   renderCrash();
   renderMines();
+  // Defer sports loading so app feels responsive
+  setTimeout(() => { initSports(); }, 700);
   resumePendingBets();
-  setTimeout(checkForChallenge, 400);
+
+  // If user arrived via a challenge link, pick it up from sessionStorage
+  setTimeout(checkForChallenge, 500);
 }
 
 function showAuthScreen(context) {
   const banner = document.getElementById('auth-challenge-banner');
   const subText = document.getElementById('auth-sub-text');
-  if (context) {
+  const forceTab = context?.forceTab;
+  if (context?.icon || context?.title || context?.sub) {
     document.getElementById('auth-challenge-icon').textContent = context.icon || '🎲';
     document.getElementById('auth-challenge-text').textContent = context.title || "You've been challenged!";
     document.getElementById('auth-challenge-sub').textContent = context.sub || 'Sign in or create a free account to accept';
     banner.style.display = 'block';
     subText.style.display = 'none';
-    // Default to signup tab for new users arriving via challenge link
-    switchAuthTab('signup');
+    switchAuthTab(forceTab || 'signup');
   } else {
     banner.style.display = 'none';
     subText.style.display = 'block';
-    switchAuthTab('login');
+    switchAuthTab(forceTab || 'login');
   }
   document.getElementById('auth-screen').classList.add('show-modal');
 }
@@ -735,14 +738,41 @@ async function signIn() {
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
   clearAuthMessages();
   try {
+    // Attempt sign-in
     const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
     if (error) {
       showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
-    } else if (data?.user) {
-      await loadUser(data.user);
+      return;
     }
-  } catch(e) { showAuthError(e.message); }
-  btn.disabled = false; btn.textContent = 'Sign In';
+
+    // Supabase can sometimes return session without a full user object in `data`.
+    // Re-query the current user/session to be certain we have the authenticated user.
+    try {
+      const { data: userData } = await sb.auth.getUser();
+      const signedInUser = userData?.user || data?.user || data?.session?.user;
+      if (!signedInUser) {
+        showAuthError('Unable to sign in. Please try again.');
+        return;
+      }
+      await loadUser(signedInUser);
+      return;
+    } catch (e) {
+      // Fallback: if getUser failed but signIn returned a session, try to use that
+      const signedInUser = data?.user || data?.session?.user;
+      if (signedInUser) {
+        await loadUser(signedInUser);
+        return;
+      }
+      throw e;
+    }
+  } catch(e) {
+    showAuthError(e.message);
+  } finally {
+    if (btn.disabled) {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
 }
 
 function normalizePhone(raw) {
@@ -783,34 +813,32 @@ async function signUp() {
     const { data, error } = await withTimeout(sb.auth.signUp({
       email, password, options: { data: { full_name: name } }
     }));
-    if (error) {
-      showAuthError(error.message);
-    } else if (data?.user) {
-      // Save profile immediately
-      await sb.from('profiles').upsert({
-        id: data.user.id, email, full_name: name,
-        phone, whatsapp_optin: whatsappOptin, balance: 200
-      }, { onConflict: 'id' });
-
-      // Send WhatsApp welcome
-      if (whatsappOptin && phone) {
-        fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, message: `👋 Welcome to OddsX, ${name}!\n\nYour account is ready. Deposit via M-Pesa and start winning.\n\n🌐 oddsx.co.ke\n\nReply STOP to opt out.` })
-        }).catch(() => {});
+    if (error) { showAuthError(error.message); }
+    else {
+      // Save phone + whatsapp_optin to profiles
+      if (data?.user) {
+        await sb.from('profiles').upsert({
+          id: data.user.id,
+          email,
+          full_name: name,
+          phone,
+          whatsapp_optin: whatsappOptin,
+          balance: 200
+        }, { onConflict: 'id' });
       }
-
-      // If Supabase returned a session (email confirm OFF), log in directly
-      if (data.session) {
-        await loadUser(data.user);
-      } else {
-        // Email confirm ON — sign in explicitly
-        const { data: signInData, error: signInErr } = await sb.auth.signInWithPassword({ email, password });
-        if (signInErr) {
-          showAuthSuccess('Account created! Please sign in.');
-        } else if (signInData?.user) {
-          await loadUser(signInData.user);
-        }
+      showAuthSuccess('Account created! You can now sign in.');
+      // Send WhatsApp onboarding message if opted in
+      if (whatsappOptin && phone) {
+        try {
+          await fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone,
+              message: `👋 Welcome to OddsX, ${name}!\n\nYour account is ready. Deposit via M-Pesa and start winning today.\n\n🌐 oddsx.co.ke\n\nReply STOP to opt out of alerts.`
+            })
+          });
+        } catch(e) { console.log('WhatsApp onboarding failed:', e.message); }
       }
     }
   } catch(e) { showAuthError(e.message); }
@@ -824,30 +852,37 @@ async function signInGoogle() {
   });
 }
 
-function setAuthUI(loggedIn) {
-  document.getElementById('signin-btn').style.display  = loggedIn ? 'none'  : 'block';
-  document.getElementById('avatar-btn').style.display  = loggedIn ? 'flex'  : 'none';
-  document.getElementById('balance-pill').style.display = loggedIn ? 'flex' : 'none';
+async function signOut() {
+  await sb.auth.signOut();
+  toggleDropdown(true);
 }
 
-async function signOut() {
-  toggleDropdown(true);
-  currentUser = null;
-  _loadedUserId = null;
-  userBalance = 0;
-  await sb.auth.signOut();
-  document.getElementById('avatar-init').textContent = '?';
-  document.getElementById('dd-email').textContent = '';
-  document.getElementById('bal-display').textContent = 'KSH 0';
-  setAuthUI(false);
-  // Stop any running timers
-  if (window._challengesRefreshTimer) { clearInterval(window._challengesRefreshTimer); window._challengesRefreshTimer = null; }
-  // Reset to sports tab
-  showTab('sports');
+function renderAvatarDropdown() {
+  const dd = document.getElementById('dropdown');
+  if (!dd) return;
+  if (!currentUser) {
+    dd.innerHTML = `
+      <div class="dd-item" onclick="toggleDropdown(true); showAuthScreen()">🔐 Sign In</div>
+      <div class="dd-item" onclick="toggleDropdown(true); showAuthScreen({forceTab:'signup'})">📝 Create Account</div>
+    `;
+    return;
+  }
+  dd.innerHTML = `
+    <div class="dd-email" id="dd-email"></div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('wallet')">💳 Wallet</div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('history')">📋 Bet History</div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('p2p')">⚔️ Challenges</div>
+    <div class="dd-item danger" onclick="toggleDropdown(true); signOut()">🚪 Sign Out</div>
+  `;
+  document.getElementById('dd-email').textContent = currentUser.email || '';
 }
 
 function toggleDropdown(forceClose) {
   const dd = document.getElementById('dropdown');
+  if (!dd) return;
+  if (!forceClose && !dd.classList.contains('open')) {
+    renderAvatarDropdown();
+  }
   dd.classList.toggle('open', forceClose ? false : !dd.classList.contains('open'));
 }
 document.addEventListener('click', e => {
@@ -3158,7 +3193,7 @@ async function acceptDiceChallenge() {
 
     // Credit winner
     if (challengerWins) {
-      // Challenger wins — credit their balance directly in DB
+      // Winner is challenger — credit their wallet
       const { data: wp } = await sb.from('profiles').select('balance, phone').eq('id', challenge.challenger_id).maybeSingle();
       const newBal = (wp?.balance || 0) + winnings;
       await sb.from('profiles').update({ balance: newBal }).eq('id', challenge.challenger_id);
@@ -3173,22 +3208,22 @@ async function acceptDiceChallenge() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: wp.phone,
-            message: '🎲 Your OddsX Dice challenge result!\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n✅ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!\n\n👉 Open OddsX to play again: ' + window.location.origin
+            message: '🎲 Your OddsX Dice challenge was accepted by ' + name + '!\n\n🎯 Result: ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ' on 7)' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!'
           })
         }).catch(() => {});
       }
     } else {
-      // Acceptor wins — credit current user
-      await updateBalance(userBalance - challenge.stake + winnings, 'bet_win', winnings,
-        'Dice challenge won — total ' + total + ' (' + oppPick.toUpperCase() + ')');
-      // Notify challenger they lost via WhatsApp
+      // Winner is acceptor (current user)
+      const newBal = userBalance + winnings;
+      await updateBalance(newBal, 'bet_win', winnings, 'Dice challenge won — total ' + total + ' (' + oppPick.toUpperCase() + ')');
+      // Notify challenger they lost
       const { data: cp } = await sb.from('profiles').select('phone').eq('id', challenge.challenger_id).maybeSingle();
       if (cp?.phone) {
         fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: cp.phone,
-            message: '🎲 Your OddsX Dice challenge result:\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n❌ ' + name + ' won this one.\n\n👉 Challenge them again: ' + window.location.origin
+            message: '🎲 Your OddsX Dice challenge result:\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n❌ ' + name + ' won this one. Better luck next time!'
           })
         }).catch(() => {});
       }
@@ -3199,25 +3234,18 @@ async function acceptDiceChallenge() {
       acceptor_id: currentUser.id,
       acceptor_name: name,
       status: 'settled',
-      die1: d1, die2: d2, total, rerolls,
+      die1: d1,
+      die2: d2,
+      total,
+      rerolls,
       winner_id: winnerId,
     }).eq('id', challenge.id);
 
     closeModal('dice-accept-modal');
     sessionStorage.removeItem('pendingDiceId');
 
-    // Show result modal to the ACCEPTOR (current user) with correct win/loss framing
-    showDiceResultModal({
-      d1, d2, total, rerolls,
-      winnerId,
-      winnerName,
-      challengerName: challenge.challenger_name,
-      acceptorName: name,
-      challengerPick: challenge.challenger_pick,
-      acceptorPick: oppPick,
-      winnings,
-      stake: challenge.stake
-    });
+    // Show animated result modal
+    showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName: challenge.challenger_name, acceptorName: name, challengerPick: challenge.challenger_pick, acceptorPick: oppPick, winnings, stake: challenge.stake, challengeId: challenge.id, challengerId: challenge.challenger_id, acceptorId: currentUser.id });
 
   } catch(e) {
     showToast('Error: ' + e.message);
@@ -3260,7 +3288,8 @@ async function declineDiceChallenge() {
 // ─── DICE RESULT ANIMATION MODAL ───
 const DICE_FACES = ['⚀','⚁','⚂','⚃','⚄','⚅'];
 
-function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName, acceptorName, challengerPick, acceptorPick, winnings, stake }) {
+function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName, acceptorName, challengerPick, acceptorPick, winnings, stake, challengeId, challengerId, acceptorId }) {
+  lastDiceChallengeContext = { challengeId, challengerId, acceptorId, challengerPick, acceptorPick, stake };
   const iWon = winnerId === currentUser?.id;
   const totalEl = document.getElementById('dr-total');
   const die1El  = document.getElementById('dr-die1');
@@ -3326,6 +3355,67 @@ function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, cha
   }, 1500);
 }
 
+async function playDiceAgain() {
+  if (!currentUser) { showToast('Sign in to replay'); showAuthScreen(); return; }
+  const context = lastDiceChallengeContext;
+  if (!context || !context.challengeId) return showToast('Unable to replay this challenge right now');
+  if (context.stake > userBalance) return showToast('Insufficient balance for replay');
+
+  const isCurrentUserChallenger = currentUser.id === context.challengerId;
+  const opponentId = isCurrentUserChallenger ? context.acceptorId : context.challengerId;
+  if (!opponentId) return showToast('Could not find the opponent to replay with');
+
+  const pick = isCurrentUserChallenger ? context.challengerPick : context.acceptorPick;
+  const stake = context.stake;
+  const btn = document.getElementById('dr-play-again-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+  try {
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Player';
+
+    await updateBalance(userBalance - stake, 'bet_loss', stake, 'Dice replay stake (escrow)');
+
+    const { data: challenge, error } = await sb.from('dice_challenges').insert({
+      challenger_id: currentUser.id,
+      challenger_name: name,
+      challenger_pick: pick,
+      stake,
+      status: 'open',
+    }).select().single();
+    if (error || !challenge) throw error || new Error('Failed to create replay challenge');
+
+    const challengeUrl = window.location.origin + '?dice=' + challenge.id;
+    const { data: oppProfile } = await sb.from('profiles').select('phone').eq('id', opponentId).maybeSingle();
+    const oppPhone = oppProfile?.phone;
+
+    if (oppPhone) {
+      const waMsg = encodeURIComponent(
+        '⚔️ ' + name + ' wants a rematch on OddsX!\n\n' +
+        '🎲 Dice — Over / Under 7\n' +
+        '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+        '🎯 Your side: ' + (pick === 'over' ? 'UNDER' : 'OVER') + '\n\n' +
+        'Accept here 👉 ' + challengeUrl
+      );
+      await fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: oppPhone, message: decodeURIComponent(waMsg) })
+      }).catch(() => {});
+
+      closeModal('dice-result-modal');
+      showToast('Replay challenge created and sent to your opponent.');
+      return;
+    }
+
+    closeModal('dice-result-modal');
+    renderDiceShareScreen(challenge, name, pick, stake, encodeURIComponent('⚔️ ' + name + ' wants a rematch on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + stake.toLocaleString() + ' each\n\nAccept here 👉 ' + challengeUrl), challengeUrl);
+  } catch(e) {
+    showToast('Error replaying challenge: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🎲 Play Again'; }
+  }
+}
+
 // ─── checkForChallenge — extended to handle ?dice= links ───
 async function checkForChallenge() {
   if (checkForChallenge._running) return;
@@ -3334,38 +3424,78 @@ async function checkForChallenge() {
 }
 
 async function _checkForChallenge() {
-  // URL params already saved to sessionStorage at script startup (captureUrlParams)
+  const params = new URLSearchParams(window.location.search);
 
-  // ── Dice challenge ──
-  const diceId = sessionStorage.getItem('pendingDiceId');
+  // ── Dice challenge link ──
+  let diceId = params.get('dice');
+  if (diceId) {
+    sessionStorage.setItem('pendingDiceId', diceId);
+    window.history.replaceState({}, '', window.location.pathname);
+  } else {
+    diceId = sessionStorage.getItem('pendingDiceId');
+  }
   if (diceId) {
     if (!currentUser) {
-      showAuthScreen({ icon: '🎲', title: "You've been challenged to Dice!", sub: 'Sign in or create a free account — takes 30 seconds' });
-      return;
+      // If our local `currentUser` isn't set yet, double-check Supabase session
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        // Load user into app state and continue handling the link
+        await loadUser(session.user);
+      } else {
+        showAuthScreen({
+          icon: '🎲',
+          title: "You've been challenged to Dice!",
+          sub: 'Sign in or create a free account — takes 30 seconds'
+        });
+        return;
+      }
     }
-    const { data: dc, error: dcErr } = await sb.from('dice_challenges').select('*').eq('id', diceId).maybeSingle();
+    const { data: dc, error: dcErr } = await sb.from('dice_challenges')
+      .select('*').eq('id', diceId).maybeSingle();
     if (dcErr || !dc) {
       sessionStorage.removeItem('pendingDiceId');
-      showToast('Dice challenge not found — it may have expired');
+      showToast('Dice challenge not found — it may have expired or the link is incorrect');
       return;
     }
+    if (dc.status === 'settled') {
+      // Watch mode — show result animation
+      sessionStorage.removeItem('pendingDiceId');
+      if (dc.die1) {
+        const iWon = dc.winner_id === currentUser?.id;
+        showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake, challengeId: dc.id, challengerId: dc.challenger_id, acceptorId: dc.acceptor_id });
+      } else { showToast('This challenge has already been settled'); }
+      return;
+    }
+    if (dc.status !== 'open') { sessionStorage.removeItem('pendingDiceId'); showToast('This challenge has already been accepted or expired'); return; }
     sessionStorage.removeItem('pendingDiceId');
-    if (dc.status === 'settled' && dc.die1) {
-      showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
-      return;
-    }
-    if (dc.status !== 'open') { showToast('This challenge has already been accepted or expired'); return; }
     showDiceAcceptModal(dc);
     return;
   }
 
-  // ── Sports P2P challenge ──
-  const challengeId = sessionStorage.getItem('pendingChallengeId');
+  // ── Sports P2P challenge link (existing) ──
+  let challengeId = params.get('challenge');
+  if (challengeId) {
+    sessionStorage.setItem('pendingChallengeId', challengeId);
+    window.history.replaceState({}, '', window.location.pathname);
+  } else {
+    challengeId = sessionStorage.getItem('pendingChallengeId');
+  }
   if (!challengeId) return;
   if (!currentUser) {
-    showAuthScreen({ icon: '⚔️', title: "You've been challenged!", sub: 'Sign in or create a free account to accept' });
-    return;
+    // Re-check Supabase session in case auth state hasn't been synced to `currentUser` yet
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await loadUser(session.user);
+    } else {
+      showAuthScreen({
+        icon: '⚔️',
+        title: "You've been challenged!",
+        sub: 'Sign in or create a free account to accept'
+      });
+      return;
+    }
   }
+
   const { data: challenge, error } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
   if (error || !challenge) { sessionStorage.removeItem('pendingChallengeId'); showToast('Challenge not found or expired'); return; }
   if (challenge.status !== 'open') { sessionStorage.removeItem('pendingChallengeId'); showToast('This challenge has already been accepted or expired'); return; }
@@ -3374,8 +3504,43 @@ async function _checkForChallenge() {
   showAcceptModal(challenge);
 } // end _checkForChallenge
 
-// Renders challenge cards into #p2p-list — used by both renderMyChallenges and _pollChallengesList
-function _renderChallengeCards(all) {
+// ─── MY CHALLENGES — shows both sports + dice ───
+async function renderMyChallenges() {
+  window._lastP2PScreen = 'challenges';
+  // Cancel any existing refresh timer
+  if (window._challengesRefreshTimer) clearInterval(window._challengesRefreshTimer);
+  const el = document.getElementById('tab-p2p');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div class="ch-back" onclick="renderChallengeHub()">‹ Back</div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="section-label" style="margin-bottom:0">🏆 My Challenges</div>
+      <button onclick="renderMyChallenges()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:8px 0">🔄 Refresh</button>
+    </div>
+    <div id="p2p-list" style="margin-top:12px"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
+
+  if (!currentUser) {
+    document.getElementById('p2p-list').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px"><div style="font-size:24px;margin-bottom:8px">🔒</div>Sign in to view your challenges</div>';
+    return;
+  }
+
+  // Fetch both sports P2P and dice challenges in parallel
+  const [sportsRes, diceRes] = await Promise.all([
+    sb.from('p2p_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+    sb.from('dice_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  const sportsChallenges = (sportsRes.data || []).map(c => ({ ...c, _type: 'sports' }));
+  const diceChallenges   = (diceRes.data   || []).map(c => ({ ...c, _type: 'dice' }));
+
+  // Merge and sort by date
+  const all = [...sportsChallenges, ...diceChallenges].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
   const p2pList = document.getElementById('p2p-list');
   if (!p2pList) return;
 
@@ -3404,13 +3569,13 @@ function _renderChallengeCards(all) {
     let myPickLabel, theirPickLabel, theirName;
     if (isDice) {
       const oppPick = c.challenger_pick === 'over' ? 'UNDER' : 'OVER';
-      myPickLabel    = iAmChallenger ? c.challenger_pick.toUpperCase() : oppPick;
+      myPickLabel   = iAmChallenger ? c.challenger_pick.toUpperCase() : oppPick;
       theirPickLabel = iAmChallenger ? oppPick : c.challenger_pick.toUpperCase();
-      theirName      = iAmChallenger ? (c.acceptor_name || 'Waiting...') : c.challenger_name;
+      theirName = iAmChallenger ? (c.acceptor_name || 'Waiting...') : c.challenger_name;
     } else {
-      myPickLabel    = iAmChallenger ? (c.challenger_label || '—') : (c.acceptor_label || '—');
+      myPickLabel   = iAmChallenger ? (c.challenger_label || '—') : (c.acceptor_label || '—');
       theirPickLabel = iAmChallenger ? (c.acceptor_label || (c.status === 'open' ? 'Not chosen yet' : '—')) : (c.challenger_label || '—');
-      theirName      = iAmChallenger ? (c.acceptor_name || 'Waiting for opponent...') : c.challenger_name;
+      theirName = iAmChallenger ? (c.acceptor_name || 'Waiting for opponent...') : c.challenger_name;
     }
 
     let resultLine = '';
@@ -3418,17 +3583,13 @@ function _renderChallengeCards(all) {
       const iWon = c.winner_id === currentUser.id;
       if (isDice && c.die1) {
         const rerollNote = c.rerolls ? ' (' + c.rerolls + ' reroll' + (c.rerolls > 1 ? 's' : '') + ')' : '';
-        resultLine =
-          '<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">' +
-            '<div style="font-size:13px">' + DICE_FACES[c.die1-1] + DICE_FACES[c.die2-1] + ' <strong>' + c.total + '</strong>' + rerollNote + '</div>' +
-            '<div style="font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' +
-              (iWon ? '🏆 +KSH ' + winnings.toLocaleString() : '❌ -KSH ' + c.stake.toLocaleString()) +
-            '</div>' +
-          '</div>' +
-          '<div style="display:flex;gap:10px;margin-top:8px;align-items:center">' +
-            '<span onclick="viewDiceResult(\'' + c.id + '\')" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600">🎲 View roll →</span>' +
-            '<span onclick="playAgainDice(\'' + c.id + '\')" style="font-size:11px;color:var(--gold);cursor:pointer;font-weight:600;background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:6px;padding:3px 10px">🔄 Play Again</span>' +
-          '</div>';
+        resultLine = '<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">' +
+          '<div style="font-size:13px">' + DICE_FACES[c.die1-1] + DICE_FACES[c.die2-1] + ' <strong>' + c.total + '</strong>' + rerollNote + '</div>' +
+          '<div style="font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' +
+            (iWon ? '🏆 +KSH ' + winnings.toLocaleString() : '❌ -KSH ' + c.stake.toLocaleString()) +
+          '</div></div>';
+        // View result button
+        resultLine += '<div style="margin-top:6px"><span onclick="viewDiceResult(\''+c.id+'\')" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600">🎲 View roll animation →</span></div>';
       } else {
         resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won KSH ' + winnings.toLocaleString() : '❌ You lost KSH ' + c.stake.toLocaleString()) + '</div>';
       }
@@ -3475,85 +3636,16 @@ function _renderChallengeCards(all) {
       resultLine +
     '</div>';
   }).join('');
+
+  // Auto-refresh every 15s while this screen is visible
+  window._challengesRefreshTimer = setInterval(() => {
+    if (window._lastP2PScreen === 'challenges') _refreshChallengesList();
+  }, 15000);
 }
 
-// Play Again — creates a new dice challenge with same stake, challenger keeps same pick,
-// opponent (the other player) gets a WhatsApp notification via their stored phone
-async function playAgainDice(originalId) {
-  if (!currentUser) { showAuthScreen(); return; }
-  const { data: orig } = await sb.from('dice_challenges').select('*').eq('id', originalId).maybeSingle();
-  if (!orig) return showToast('Original challenge not found');
-
-  const iAmChallenger = orig.challenger_id === currentUser.id;
-  // Current user keeps their previous pick
-  const myPick = iAmChallenger ? orig.challenger_pick : (orig.challenger_pick === 'over' ? 'under' : 'over');
-  const stake = orig.stake;
-
-  if (stake > userBalance) return showToast('Insufficient balance — deposit to play again');
-
-  // Deduct stake
-  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Dice rematch stake (escrow)');
-
-  const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
-  const myName = profile?.full_name || currentUser.email?.split('@')[0] || 'Player';
-
-  const { data: newChallenge, error } = await sb.from('dice_challenges').insert({
-    challenger_id: currentUser.id,
-    challenger_name: myName,
-    challenger_pick: myPick,
-    stake,
-    status: 'open',
-  }).select().single();
-
-  if (error) { showToast('Error creating rematch: ' + error.message); return; }
-
-  // Notify opponent via WhatsApp if we have their phone
-  const opponentId = iAmChallenger ? orig.acceptor_id : orig.challenger_id;
-  const opponentName = iAmChallenger ? (orig.acceptor_name || 'Opponent') : orig.challenger_name;
-  if (opponentId) {
-    const { data: oppProfile } = await sb.from('profiles').select('phone').eq('id', opponentId).maybeSingle();
-    if (oppProfile?.phone) {
-      const challengeUrl = window.location.origin + '?dice=' + newChallenge.id;
-      fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: oppProfile.phone,
-          message: '🔄 ' + myName + ' wants a rematch on OddsX Dice!\n\n🎲 Same stake: KSH ' + stake.toLocaleString() + '\n🎯 Your side: ' + (myPick === 'over' ? 'UNDER' : 'OVER') + '\n\nAccept here 👉 ' + challengeUrl
-        })
-      }).catch(() => {});
-    }
-  }
-
-  // Build share link for WhatsApp
-  const oppPick = myPick === 'over' ? 'UNDER' : 'OVER';
-  const challengeUrl = window.location.origin + '?dice=' + newChallenge.id;
-  const waMsg = encodeURIComponent('🔄 ' + myName + ' wants a rematch on OddsX!\n\n⚔️ ' + opponentName + ', it\'s your turn!\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + stake.toLocaleString() + ' each\n🎯 Your side: ' + oppPick + '\n\nAccept here 👉 ' + challengeUrl);
-
-  // Show share screen
-  renderDiceShareScreen(newChallenge, myName, myPick, stake, waMsg, challengeUrl);
-  showToast('Rematch created! Share with ' + opponentName);
-}
-
-// ─── MY CHALLENGES ───
-async function renderMyChallenges() {
-  window._lastP2PScreen = 'challenges';
-  if (window._challengesRefreshTimer) { clearInterval(window._challengesRefreshTimer); window._challengesRefreshTimer = null; }
-  const el = document.getElementById('tab-p2p');
-  if (!el) return;
-
-  el.innerHTML = `
-    <div class="ch-back" onclick="renderChallengeHub()">‹ Back</div>
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div class="section-label" style="margin-bottom:0">🏆 My Challenges</div>
-      <button onclick="renderMyChallenges()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:8px 0">🔄 Refresh</button>
-    </div>
-    <div id="p2p-list" style="margin-top:12px"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
-
-  if (!currentUser) {
-    document.getElementById('p2p-list').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px"><div style="font-size:24px;margin-bottom:8px">🔒</div>Sign in to view your challenges</div>';
-    return;
-  }
-
+// Silent background refresh — only updates the list, doesn't re-render the whole screen
+async function _refreshChallengesList() {
+  if (!currentUser) return;
   const [sportsRes, diceRes] = await Promise.all([
     sb.from('p2p_challenges').select('*')
       .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
@@ -3562,71 +3654,16 @@ async function renderMyChallenges() {
       .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
       .order('created_at', { ascending: false }).limit(20),
   ]);
-
-  const all = [
-    ...(sportsRes.data || []).map(c => ({ ...c, _type: 'sports' })),
-    ...(diceRes.data   || []).map(c => ({ ...c, _type: 'dice' })),
-  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  _renderChallengeCards(all);
-
-  // Poll every 12s — updates list in place
-  window._challengesRefreshTimer = setInterval(_pollChallengesList, 12000);
-}
-
-// Polls DB and updates p2p-list innerHTML in place — no screen re-render
-async function _pollChallengesList() {
-  if (!currentUser || window._lastP2PScreen !== 'challenges') return;
   const p2pList = document.getElementById('p2p-list');
-  if (!p2pList) return;
-
-  const [sportsRes, diceRes] = await Promise.all([
-    sb.from('p2p_challenges').select('*')
-      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
-      .order('created_at', { ascending: false }).limit(20),
-    sb.from('dice_challenges').select('*')
-      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
-      .order('created_at', { ascending: false }).limit(20),
-  ]);
-
-  if (!document.getElementById('p2p-list') || window._lastP2PScreen !== 'challenges') return;
-
-  const all = [
-    ...(sportsRes.data||[]).map(c=>({...c,_type:'sports'})),
-    ...(diceRes.data||[]).map(c=>({...c,_type:'dice'}))
-  ].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
-
-  _renderChallengeCards(all);
-
-  // Refresh balance display in case challenger just won (their balance was updated remotely)
-  await refreshBalance();
-
-  // If a newly-settled dice challenge involves us as challenger and we haven't seen the result yet, show modal
-  const justSettled = all.find(c =>
-    c._type === 'dice' && c.status === 'settled' && c.die1 &&
-    c.challenger_id === currentUser.id &&
-    !sessionStorage.getItem('seenResult_' + c.id)
-  );
-  if (justSettled) {
-    sessionStorage.setItem('seenResult_' + justSettled.id, '1');
-    showDiceResultModal({
-      d1: justSettled.die1, d2: justSettled.die2, total: justSettled.total,
-      rerolls: justSettled.rerolls || 0, winnerId: justSettled.winner_id,
-      winnerName: justSettled.winner_id === currentUser.id ? 'You' : justSettled.acceptor_name,
-      challengerName: justSettled.challenger_name,
-      acceptorName: justSettled.acceptor_name || 'Opponent',
-      challengerPick: justSettled.challenger_pick,
-      acceptorPick: justSettled.challenger_pick === 'over' ? 'under' : 'over',
-      winnings: Math.round(justSettled.stake * 2 * 0.95),
-      stake: justSettled.stake
-    });
-  }
+  if (!p2pList || window._lastP2PScreen !== 'challenges') return;
+  // Re-render just the list content — triggers full renderMyChallenges for simplicity
+  renderMyChallenges();
 }
 
 async function viewDiceResult(challengeId) {
   const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', challengeId).maybeSingle();
   if (!dc || !dc.die1) return showToast('Result not available');
-  showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
+  showDiceResultModal({ d1: dc.die1, d2: dc.d2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake, challengeId: dc.id, challengerId: dc.challenger_id, acceptorId: dc.acceptor_id });
 }
 
 // ─── DEPOSIT / WITHDRAW ───
@@ -3774,6 +3811,7 @@ function boot() {
     setTimeout(boot, 300);
     return;
   }
+  initSupabaseClient();
   init().catch(err => {
     console.error('Init failed:', err);
     document.getElementById('main-app').style.display = 'block';
