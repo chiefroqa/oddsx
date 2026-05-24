@@ -2904,12 +2904,11 @@ async function createDiceChallenge() {
     const oppPick = dicePick === 'over' ? 'UNDER' : 'OVER';
     const winnerTakes = Math.round(stake * 2 * 0.95);
     const waMsg = encodeURIComponent(
-      '🎲 ' + name + ' challenged you to a Dice game on OddsX!\n\n' +
-      '⬆️ They picked: ' + dicePick.toUpperCase() + '\n' +
-      '⬇️ You get: ' + oppPick + '\n' +
+      '⚔️ ' + name + ' has challenged you on OddsX!\n\n' +
+      '🎲 Dice — Over / Under 7\n' +
       '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
-      '🏆 Winner takes: KSH ' + winnerTakes.toLocaleString() + '\n\n' +
-      'Accept & Roll 👉 ' + challengeUrl
+      '🎯 Your side: ' + oppPick + '\n\n' +
+      'Accept here 👉 ' + challengeUrl
     );
 
     // Show share screen
@@ -3334,7 +3333,7 @@ async function renderMyChallenges() {
       if (isDice) {
         const challengeUrl = window.location.origin + '?dice=' + c.id;
         const oppPick = c.challenger_pick === 'over' ? 'UNDER' : 'OVER';
-        const waMsg = encodeURIComponent('🎲 ' + c.challenger_name + ' challenged you to Dice on OddsX!\n\n⬆️ They picked: ' + c.challenger_pick.toUpperCase() + '\n⬇️ You get: ' + oppPick + '\n💰 Stake: KSH ' + c.stake.toLocaleString() + ' each\n\nAccept & Roll 👉 ' + challengeUrl);
+        const waMsg = encodeURIComponent('⚔️ ' + c.challenger_name + ' has challenged you on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + c.stake.toLocaleString() + ' each\n🎯 Your side: ' + oppPick + '\n\nAccept here 👉 ' + challengeUrl);
         resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + waMsg + '" target="_blank" style="font-size:11px;color:var(--gold);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
       } else {
         const shareUrl = window.location.origin + '?challenge=' + c.id;
