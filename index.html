@@ -480,6 +480,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div id="dr-rerolls" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
     <div id="dr-result-line" style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-bottom:16px"></div>
     <div id="dr-picks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px"></div>
+    <button onclick="playDiceAgain()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🎲 Play Again</button>
     <button onclick="closeModal('dice-result-modal')" style="width:100%;background:var(--g3);border:none;border-radius:8px;color:var(--muted);padding:10px;cursor:pointer;font-size:13px">Close</button>
   </div>
 </div>
@@ -712,10 +713,25 @@ async function signIn() {
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
   clearAuthMessages();
   try {
-    const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
-    if (error) showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
-  } catch(e) { showAuthError(e.message); }
-  btn.disabled = false; btn.textContent = 'Sign In';
+    const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
+    if (error) {
+      showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+      return;
+    }
+    const signedInUser = data?.user || data?.session?.user;
+    if (signedInUser) {
+      await loadUser(signedInUser);
+      return;
+    }
+    showAuthSuccess('Signed in. Loading your challenge...');
+    setTimeout(() => checkForChallenge(), 500);
+  } catch(e) {
+    showAuthError(e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Sign In';
 }
 
 function normalizePhone(raw) {
@@ -3271,6 +3287,12 @@ function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, cha
         </div>`;
     }, 400);
   }, 1500);
+}
+
+function playDiceAgain() {
+  closeModal('dice-result-modal');
+  showTab('p2p');
+  renderDiceCreate();
 }
 
 // ─── checkForChallenge — extended to handle ?dice= links ───
