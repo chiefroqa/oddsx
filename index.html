@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (app) app.style.display = 'block';
 });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer
   onerror="loadSupabaseFallback()"></script>
 <script>
 function loadSupabaseFallback() {
@@ -606,9 +606,11 @@ async function init() {
   if (session) {
     await loadUser(session.user);
   } else {
-    initSports();
+    // Render lightweight UI immediately; defer heavy data fetches
     renderCrash();
     renderMines();
+    // Defer sports load so initial paint is fast
+    setTimeout(() => { initSports(); }, 700);
     setTimeout(checkForChallenge, 600);
   }
 
@@ -623,31 +625,49 @@ async function init() {
 }
 
 async function loadUser(user) {
+  // Set minimal user state immediately so UI can update fast
   currentUser = user;
-  let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
-  if (!profile) {
-    await sb.from('profiles').insert({
-      id: user.id, email: user.email,
-      full_name: user.user_metadata?.full_name || '',
-      phone: user.user_metadata?.phone || null,
-      whatsapp_optin: true,
-      balance: 200
-    });
-    ({ data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single());
-  }
-  // Cache phone on window so deposit modal can pre-fill it
-  window.userPhone = profile?.phone || null;
-  userBalance = profile?.balance || 0;
-  const initials = (profile?.full_name || user.email || '?')[0].toUpperCase();
+  const initials = (user.user_metadata?.full_name || user.email || '?')[0].toUpperCase();
   document.getElementById('avatar-init').textContent = initials;
-  document.getElementById('dd-email').textContent = user.email;
-  // Close auth modal after successful login
+  document.getElementById('dd-email').textContent = user.email || '';
+  // Close auth modal after successful login and show main app
   document.getElementById('auth-screen').classList.remove('show-modal');
   document.getElementById('main-app').style.display = 'block';
-  updateBalanceDisplay();
-  initSports();
+
+  // Fetch profile in background with a timeout to avoid blocking the UI
+  (async () => {
+    try {
+      const { data: profile, error } = await withTimeout(
+        sb.from('profiles').select('full_name,phone,whatsapp_optin,balance').eq('id', user.id).maybeSingle(), 8000
+      );
+      if (error) throw error;
+      if (!profile) {
+        await sb.from('profiles').insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || '',
+          phone: user.user_metadata?.phone || null,
+          whatsapp_optin: true,
+          balance: 200
+        });
+        const { data: newProfile } = await sb.from('profiles').select('full_name,phone,whatsapp_optin,balance').eq('id', user.id).maybeSingle();
+        window.userPhone = newProfile?.phone || null;
+        userBalance = newProfile?.balance || 0;
+      } else {
+        window.userPhone = profile?.phone || null;
+        userBalance = profile?.balance || 0;
+      }
+      updateBalanceDisplay();
+    } catch (e) {
+      console.warn('Profile load slow or failed:', e?.message || e);
+    }
+  })();
+
+  // Render light UI immediately; defer heavy calls to avoid blocking
   renderCrash();
   renderMines();
+  // Defer sports loading so app feels responsive
+  setTimeout(() => { initSports(); }, 700);
   resumePendingBets();
 
   // If user arrived via a challenge link, pick it up from sessionStorage
