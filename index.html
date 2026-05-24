@@ -713,18 +713,33 @@ async function signIn() {
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
   clearAuthMessages();
   try {
+    // Attempt sign-in
     const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
     if (error) {
       showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
       return;
     }
-    const signedInUser = data?.user || data?.session?.user;
-    if (!signedInUser) {
-      showAuthError('Unable to sign in. Please try again.');
+
+    // Supabase can sometimes return session without a full user object in `data`.
+    // Re-query the current user/session to be certain we have the authenticated user.
+    try {
+      const { data: userData } = await sb.auth.getUser();
+      const signedInUser = userData?.user || data?.user || data?.session?.user;
+      if (!signedInUser) {
+        showAuthError('Unable to sign in. Please try again.');
+        return;
+      }
+      await loadUser(signedInUser);
       return;
+    } catch (e) {
+      // Fallback: if getUser failed but signIn returned a session, try to use that
+      const signedInUser = data?.user || data?.session?.user;
+      if (signedInUser) {
+        await loadUser(signedInUser);
+        return;
+      }
+      throw e;
     }
-    await loadUser(signedInUser);
-    return;
   } catch(e) {
     showAuthError(e.message);
   } finally {
@@ -3396,12 +3411,19 @@ async function _checkForChallenge() {
   }
   if (diceId) {
     if (!currentUser) {
-      showAuthScreen({
-        icon: '🎲',
-        title: "You've been challenged to Dice!",
-        sub: 'Sign in or create a free account — takes 30 seconds'
-      });
-      return;
+      // If our local `currentUser` isn't set yet, double-check Supabase session
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        // Load user into app state and continue handling the link
+        await loadUser(session.user);
+      } else {
+        showAuthScreen({
+          icon: '🎲',
+          title: "You've been challenged to Dice!",
+          sub: 'Sign in or create a free account — takes 30 seconds'
+        });
+        return;
+      }
     }
     const { data: dc, error: dcErr } = await sb.from('dice_challenges')
       .select('*').eq('id', diceId).maybeSingle();
@@ -3434,14 +3456,19 @@ async function _checkForChallenge() {
     challengeId = sessionStorage.getItem('pendingChallengeId');
   }
   if (!challengeId) return;
-
   if (!currentUser) {
-    showAuthScreen({
-      icon: '⚔️',
-      title: "You've been challenged!",
-      sub: 'Sign in or create a free account to accept'
-    });
-    return;
+    // Re-check Supabase session in case auth state hasn't been synced to `currentUser` yet
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await loadUser(session.user);
+    } else {
+      showAuthScreen({
+        icon: '⚔️',
+        title: "You've been challenged!",
+        sub: 'Sign in or create a free account to accept'
+      });
+      return;
+    }
   }
 
   const { data: challenge, error } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
