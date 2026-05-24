@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (app) app.style.display = 'block';
 });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onerror="loadSupabaseFallback()"></script>
 <script>
 function loadSupabaseFallback() {
@@ -555,8 +555,13 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 // ─────────────────────────────────────────
 const SUPABASE_URL = 'https://nvgnxijveuimgfmtuqhz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52Z254aWp2ZXVpbWdmbXR1cWh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDMyNzcsImV4cCI6MjA5MjcxOTI3N30.ve3una7vg7QUKwvDYYjD5fSHY3bv12qFRLXb-Ipz7Pc';
-// Initialize Supabase immediately — CDN script is loaded synchronously above
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let sb = null;
+
+function initSupabaseClient() {
+  if (!sb && typeof supabase !== 'undefined') {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}
 
 // ─── STATE ───
 let currentUser = null;
@@ -3806,6 +3811,7 @@ function boot() {
     setTimeout(boot, 300);
     return;
   }
+  initSupabaseClient();
   init().catch(err => {
     console.error('Init failed:', err);
     document.getElementById('main-app').style.display = 'block';
