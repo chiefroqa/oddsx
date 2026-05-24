@@ -592,36 +592,27 @@ async function withTimeout(promise, ms = 10000) {
 }
 
 async function init() {
-  // Show app immediately — never black screen
   document.getElementById('main-app').style.display = 'block';
 
-  let userLoaded = false;
-
-  // onAuthStateChange fires for INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (session && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-      if (event === 'SIGNED_IN' || !userLoaded) {
-        userLoaded = true;
-        await loadUser(session.user);
-      }
-    } else if (event === 'SIGNED_OUT') {
-      currentUser = null;
-      userLoaded = false;
-    }
-  });
-
-  // getSession() as backup for environments where onAuthStateChange fires late
+  // 1. Check for existing session on load
   const { data: { session } } = await sb.auth.getSession();
-  if (session && !userLoaded) {
-    userLoaded = true;
+  if (session) {
     await loadUser(session.user);
-  } else if (!session) {
-    currentUser = null;
+  } else {
     initSports();
     renderCrash();
     renderMines();
     setTimeout(checkForChallenge, 600);
   }
+
+  // 2. Listen for login / logout events only
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      await loadUser(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+    }
+  });
 }
 
 async function loadUser(user) {
