@@ -25,7 +25,26 @@
 <meta name="theme-color" content="#00e5a0">
 <meta name="description" content="Kenya's live sports betting & P2P challenge platform. Bet on football, NBA, and more.">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Show app skeleton immediately so screen is never black
+document.addEventListener('DOMContentLoaded', () => {
+  const app = document.getElementById('main-app');
+  if (app) app.style.display = 'block';
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
+  onerror="loadSupabaseFallback()"></script>
+<script>
+function loadSupabaseFallback() {
+  const s = document.createElement('script');
+  s.src = 'https://unpkg.com/@supabase/supabase-js@2';
+  s.onerror = () => {
+    document.getElementById('main-app').style.display = 'block';
+    document.getElementById('loading-error').style.display = 'block';
+  };
+  document.head.appendChild(s);
+}
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -283,6 +302,13 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 
 <!-- MAIN APP -->
 <div id="main-app">
+  <!-- Network/script load error fallback -->
+  <div id="loading-error" style="display:none;position:fixed;inset:0;background:var(--g);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;text-align:center">
+    <div style="font-size:40px">📡</div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700">Connection Error</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">Couldn't load OddsX. Check your internet connection and try again.</div>
+    <button onclick="location.reload()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px 28px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px">🔄 Retry</button>
+  </div>
   <div class="header">
     <div class="logo">ODDS<span>X</span></div>
     <div class="header-right">
@@ -3545,8 +3571,25 @@ async function initiateWithdraw() {
 
 // ─── TOAST ───
 
+// ─── BOOT ───
+function boot() {
+  if (typeof supabase === 'undefined') {
+    // Supabase not loaded yet — retry in 300ms (handles slow CDN)
+    setTimeout(boot, 300);
+    return;
+  }
+  init().catch(err => {
+    console.error('Init failed:', err);
+    document.getElementById('main-app').style.display = 'block';
+    document.getElementById('loading-error').style.display = 'flex';
+  });
+}
 
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
 </script>
 </body>
 </html>
