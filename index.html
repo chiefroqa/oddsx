@@ -567,22 +567,21 @@ async function withTimeout(promise, ms = 10000) {
 
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
-  // Always show main app first (guest mode)
   document.getElementById('main-app').style.display = 'block';
-  if (session) await loadUser(session.user);
-  else {
-    // Guest mode — no user, but app is visible
+  if (session) {
+    await loadUser(session.user);
+  } else {
     currentUser = null;
     initSports();
     renderCrash();
     renderMines();
+    // Guest with a pending dice/challenge link — prompt sign-in
+    setTimeout(checkForChallenge, 600);
   }
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) await loadUser(session.user); // loadUser calls checkForChallenge internally
-    else currentUser = null; // Stay in guest mode, don't hide app
+    if (event === 'SIGNED_IN' && session) await loadUser(session.user);
+    else if (event === 'SIGNED_OUT') currentUser = null;
   });
-  // For guests arriving via challenge link (not logged in), check after app renders
-  if (!session) setTimeout(checkForChallenge, 800);
 }
 
 async function loadUser(user) {
@@ -614,7 +613,7 @@ async function loadUser(user) {
   resumePendingBets();
 
   // If user arrived via a challenge link, pick it up from sessionStorage
-  setTimeout(checkForChallenge, 800);
+  setTimeout(checkForChallenge, 500);
 }
 
 function showAuthScreen() {
@@ -3211,6 +3210,12 @@ function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, cha
 
 // ─── checkForChallenge — extended to handle ?dice= links ───
 async function checkForChallenge() {
+  if (checkForChallenge._running) return;
+  checkForChallenge._running = true;
+  try { await _checkForChallenge(); } finally { checkForChallenge._running = false; }
+}
+
+async function _checkForChallenge() {
   const params = new URLSearchParams(window.location.search);
 
   // ── Dice challenge link ──
@@ -3223,8 +3228,13 @@ async function checkForChallenge() {
   }
   if (diceId) {
     if (!currentUser) { showToast('Sign in to accept this Dice challenge'); showAuthScreen(); return; }
-    const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', diceId).maybeSingle();
-    if (!dc) { sessionStorage.removeItem('pendingDiceId'); showToast('Dice challenge not found'); return; }
+    const { data: dc, error: dcErr } = await sb.from('dice_challenges')
+      .select('*').eq('id', diceId).maybeSingle();
+    if (dcErr || !dc) {
+      sessionStorage.removeItem('pendingDiceId');
+      showToast('Dice challenge not found — it may have expired or the link is incorrect');
+      return;
+    }
     if (dc.status === 'settled') {
       // Watch mode — show result animation
       sessionStorage.removeItem('pendingDiceId');
@@ -3258,7 +3268,7 @@ async function checkForChallenge() {
   sessionStorage.removeItem('pendingChallengeId');
   pendingAcceptChallenge = challenge;
   showAcceptModal(challenge);
-}
+} // end _checkForChallenge
 
 // ─── MY CHALLENGES — shows both sports + dice ───
 async function renderMyChallenges() {
