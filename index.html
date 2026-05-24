@@ -613,7 +613,7 @@ async function withTimeout(promise, ms = 10000) {
   return Promise.race([promise, timeout]);
 }
 
-let _userLoading = false;
+let _loadedUserId = null;
 
 async function init() {
   document.getElementById('main-app').style.display = 'block';
@@ -624,7 +624,7 @@ async function init() {
       await loadUser(session.user);
     } else if (event === 'SIGNED_OUT') {
       currentUser = null;
-      _userLoading = false;
+      _loadedUserId = null;
       setAuthUI(false);
     }
   });
@@ -642,9 +642,12 @@ async function init() {
   }
 }
 
+let _loadedUserId = null;
+
 async function loadUser(user) {
-  if (_userLoading || (currentUser?.id === user.id && document.getElementById('avatar-init').textContent !== '?')) return;
-  _userLoading = true;
+  // Prevent re-running for the same user (e.g. INITIAL_SESSION + getSession both fire)
+  if (_loadedUserId === user.id) return;
+  _loadedUserId = user.id;
   currentUser = user;
   let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) {
@@ -667,7 +670,6 @@ async function loadUser(user) {
   document.getElementById('main-app').style.display = 'block';
   setAuthUI(true);
   updateBalanceDisplay();
-  _userLoading = false;
   initSports();
   renderCrash();
   renderMines();
@@ -831,9 +833,10 @@ function setAuthUI(loggedIn) {
 
 async function signOut() {
   toggleDropdown(true);
-  await sb.auth.signOut();
   currentUser = null;
+  _loadedUserId = null;
   userBalance = 0;
+  await sb.auth.signOut();
   document.getElementById('avatar-init').textContent = '?';
   document.getElementById('dd-email').textContent = '';
   document.getElementById('bal-display').textContent = 'KSH 0';
