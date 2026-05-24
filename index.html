@@ -592,22 +592,36 @@ async function withTimeout(promise, ms = 10000) {
 }
 
 async function init() {
-  const { data: { session } } = await sb.auth.getSession();
+  // Show app immediately — never black screen
   document.getElementById('main-app').style.display = 'block';
-  if (session) {
+
+  let userLoaded = false;
+
+  // onAuthStateChange fires for INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (session && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+      if (event === 'SIGNED_IN' || !userLoaded) {
+        userLoaded = true;
+        await loadUser(session.user);
+      }
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      userLoaded = false;
+    }
+  });
+
+  // getSession() as backup for environments where onAuthStateChange fires late
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && !userLoaded) {
+    userLoaded = true;
     await loadUser(session.user);
-  } else {
+  } else if (!session) {
     currentUser = null;
     initSports();
     renderCrash();
     renderMines();
-    // Guest with a pending dice/challenge link — prompt sign-in
     setTimeout(checkForChallenge, 600);
   }
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) await loadUser(session.user);
-    else if (event === 'SIGNED_OUT') currentUser = null;
-  });
 }
 
 async function loadUser(user) {
@@ -811,6 +825,10 @@ async function showTab(t) {
     return;
   }
   const tabs = ['sports','crash','mines','wallet','history','p2p'];
+  if (t !== 'p2p' && window._challengesRefreshTimer) {
+    clearInterval(window._challengesRefreshTimer);
+    window._challengesRefreshTimer = null;
+  }
   tabs.forEach(id => document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none');
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
   const hasSlip = Object.keys(selections).length > 0;
@@ -818,7 +836,11 @@ async function showTab(t) {
   document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') await renderWallet();
   if (t==='history') await renderHistory();
-  if (t==='p2p') await renderP2PChallenges();
+  if (t==='p2p') {
+    renderChallengeHub();
+    // If user was just viewing My Challenges, re-render it with fresh data
+    if (window._lastP2PScreen === 'challenges') renderMyChallenges();
+  }
 }
 
 // ─── TOAST ───
@@ -2789,6 +2811,8 @@ function renderP2PChallenges() {
 }
 
 function renderChallengeHub() {
+  window._lastP2PScreen = 'hub';
+  if (window._challengesRefreshTimer) { clearInterval(window._challengesRefreshTimer); window._challengesRefreshTimer = null; }
   const el = document.getElementById('tab-p2p');
   if (!el) return;
   el.innerHTML = `
@@ -2816,6 +2840,8 @@ function renderChallengeHub() {
 }
 
 function renderCreateChallenge() {
+  window._lastP2PScreen = 'create';
+  if (window._challengesRefreshTimer) { clearInterval(window._challengesRefreshTimer); window._challengesRefreshTimer = null; }
   const el = document.getElementById('tab-p2p');
   if (!el) return;
   el.innerHTML = `
@@ -3298,6 +3324,9 @@ async function _checkForChallenge() {
 
 // ─── MY CHALLENGES — shows both sports + dice ───
 async function renderMyChallenges() {
+  window._lastP2PScreen = 'challenges';
+  // Cancel any existing refresh timer
+  if (window._challengesRefreshTimer) clearInterval(window._challengesRefreshTimer);
   const el = document.getElementById('tab-p2p');
   if (!el) return;
 
@@ -3425,6 +3454,28 @@ async function renderMyChallenges() {
       resultLine +
     '</div>';
   }).join('');
+
+  // Auto-refresh every 15s while this screen is visible
+  window._challengesRefreshTimer = setInterval(() => {
+    if (window._lastP2PScreen === 'challenges') _refreshChallengesList();
+  }, 15000);
+}
+
+// Silent background refresh — only updates the list, doesn't re-render the whole screen
+async function _refreshChallengesList() {
+  if (!currentUser) return;
+  const [sportsRes, diceRes] = await Promise.all([
+    sb.from('p2p_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+    sb.from('dice_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+  ]);
+  const p2pList = document.getElementById('p2p-list');
+  if (!p2pList || window._lastP2PScreen !== 'challenges') return;
+  // Re-render just the list content — triggers full renderMyChallenges for simplicity
+  renderMyChallenges();
 }
 
 async function viewDiceResult(challengeId) {
