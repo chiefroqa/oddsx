@@ -613,7 +613,6 @@ async function withTimeout(promise, ms = 10000) {
   return Promise.race([promise, timeout]);
 }
 
-let _loadedUserId = null;
 
 async function init() {
   document.getElementById('main-app').style.display = 'block';
