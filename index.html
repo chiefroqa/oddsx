@@ -162,7 +162,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .sport-chip.active{background:rgba(0,229,160,0.12);border-color:var(--accent);color:var(--accent)}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
 .hist-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
-.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:font-family:'Barlow Condensed',sans-serif}
+.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif}
 
 /* ── CHALLENGE HUB ── */
 .ch-hub{display:flex;flex-direction:column;gap:14px;padding:0}
@@ -480,7 +480,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div id="dr-rerolls" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
     <div id="dr-result-line" style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-bottom:16px"></div>
     <div id="dr-picks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px"></div>
-    <button onclick="playDiceAgain()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🎲 Play Again</button>
+    <button id="dr-play-again-btn" onclick="playDiceAgain()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🎲 Play Again</button>
     <button onclick="closeModal('dice-result-modal')" style="width:100%;background:var(--g3);border:none;border-radius:8px;color:var(--muted);padding:10px;cursor:pointer;font-size:13px">Close</button>
   </div>
 </div>
@@ -3180,7 +3180,7 @@ async function acceptDiceChallenge() {
     sessionStorage.removeItem('pendingDiceId');
 
     // Show animated result modal
-    showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName: challenge.challenger_name, acceptorName: name, challengerPick: challenge.challenger_pick, acceptorPick: oppPick, winnings, stake: challenge.stake });
+    showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName: challenge.challenger_name, acceptorName: name, challengerPick: challenge.challenger_pick, acceptorPick: oppPick, winnings, stake: challenge.stake, challengeId: challenge.id, challengerId: challenge.challenger_id, acceptorId: currentUser.id });
 
   } catch(e) {
     showToast('Error: ' + e.message);
@@ -3223,7 +3223,8 @@ async function declineDiceChallenge() {
 // ─── DICE RESULT ANIMATION MODAL ───
 const DICE_FACES = ['⚀','⚁','⚂','⚃','⚄','⚅'];
 
-function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName, acceptorName, challengerPick, acceptorPick, winnings, stake }) {
+function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName, acceptorName, challengerPick, acceptorPick, winnings, stake, challengeId, challengerId, acceptorId }) {
+  lastDiceChallengeContext = { challengeId, challengerId, acceptorId, challengerPick, acceptorPick, stake };
   const iWon = winnerId === currentUser?.id;
   const totalEl = document.getElementById('dr-total');
   const die1El  = document.getElementById('dr-die1');
@@ -3289,10 +3290,65 @@ function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, cha
   }, 1500);
 }
 
-function playDiceAgain() {
-  closeModal('dice-result-modal');
-  showTab('p2p');
-  renderDiceCreate();
+async function playDiceAgain() {
+  if (!currentUser) { showToast('Sign in to replay'); showAuthScreen(); return; }
+  const context = lastDiceChallengeContext;
+  if (!context || !context.challengeId) return showToast('Unable to replay this challenge right now');
+  if (context.stake > userBalance) return showToast('Insufficient balance for replay');
+
+  const isCurrentUserChallenger = currentUser.id === context.challengerId;
+  const opponentId = isCurrentUserChallenger ? context.acceptorId : context.challengerId;
+  if (!opponentId) return showToast('Could not find the opponent to replay with');
+
+  const pick = isCurrentUserChallenger ? context.challengerPick : context.acceptorPick;
+  const stake = context.stake;
+  const btn = document.getElementById('dr-play-again-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+  try {
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Player';
+
+    await updateBalance(userBalance - stake, 'bet_loss', stake, 'Dice replay stake (escrow)');
+
+    const { data: challenge, error } = await sb.from('dice_challenges').insert({
+      challenger_id: currentUser.id,
+      challenger_name: name,
+      challenger_pick: pick,
+      stake,
+      status: 'open',
+    }).select().single();
+    if (error || !challenge) throw error || new Error('Failed to create replay challenge');
+
+    const challengeUrl = window.location.origin + '?dice=' + challenge.id;
+    const { data: oppProfile } = await sb.from('profiles').select('phone').eq('id', opponentId).maybeSingle();
+    const oppPhone = oppProfile?.phone;
+
+    if (oppPhone) {
+      const waMsg = encodeURIComponent(
+        '⚔️ ' + name + ' wants a rematch on OddsX!\n\n' +
+        '🎲 Dice — Over / Under 7\n' +
+        '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+        '🎯 Your side: ' + (pick === 'over' ? 'UNDER' : 'OVER') + '\n\n' +
+        'Accept here 👉 ' + challengeUrl
+      );
+      await fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: oppPhone, message: decodeURIComponent(waMsg) })
+      }).catch(() => {});
+
+      closeModal('dice-result-modal');
+      showToast('Replay challenge created and sent to your opponent.');
+      return;
+    }
+
+    closeModal('dice-result-modal');
+    renderDiceShareScreen(challenge, name, pick, stake, encodeURIComponent('⚔️ ' + name + ' wants a rematch on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + stake.toLocaleString() + ' each\n\nAccept here 👉 ' + challengeUrl), challengeUrl);
+  } catch(e) {
+    showToast('Error replaying challenge: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🎲 Play Again'; }
+  }
 }
 
 // ─── checkForChallenge — extended to handle ?dice= links ───
@@ -3334,7 +3390,7 @@ async function _checkForChallenge() {
       sessionStorage.removeItem('pendingDiceId');
       if (dc.die1) {
         const iWon = dc.winner_id === currentUser?.id;
-        showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
+        showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake, challengeId: dc.id, challengerId: dc.challenger_id, acceptorId: dc.acceptor_id });
       } else { showToast('This challenge has already been settled'); }
       return;
     }
@@ -3530,7 +3586,7 @@ async function _refreshChallengesList() {
 async function viewDiceResult(challengeId) {
   const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', challengeId).maybeSingle();
   if (!dc || !dc.die1) return showToast('Result not available');
-  showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
+  showDiceResultModal({ d1: dc.die1, d2: dc.d2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake, challengeId: dc.id, challengerId: dc.challenger_id, acceptorId: dc.acceptor_id });
 }
 
 // ─── DEPOSIT / WITHDRAW ───
