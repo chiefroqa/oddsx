@@ -613,32 +613,38 @@ async function withTimeout(promise, ms = 10000) {
   return Promise.race([promise, timeout]);
 }
 
+let _userLoading = false;
+
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
-  // 1. Check for existing session on load
+  // onAuthStateChange fires INITIAL_SESSION synchronously before getSession resolves on some devices
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+      await loadUser(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      _userLoading = false;
+      setAuthUI(false);
+    }
+  });
+
+  // getSession as primary path — fires if onAuthStateChange hasn't resolved it yet
   const { data: { session } } = await sb.auth.getSession();
-  if (session) {
+  if (session?.user) {
     await loadUser(session.user);
-  } else {
+  } else if (!currentUser) {
     setAuthUI(false);
     initSports();
     renderCrash();
     renderMines();
-    setTimeout(checkForChallenge, 600);
+    setTimeout(checkForChallenge, 400);
   }
-
-  // 2. Listen for login / logout events only
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) {
-      await loadUser(session.user);
-    } else if (event === 'SIGNED_OUT') {
-      currentUser = null;
-    }
-  });
 }
 
 async function loadUser(user) {
+  if (_userLoading || (currentUser?.id === user.id && document.getElementById('avatar-init').textContent !== '?')) return;
+  _userLoading = true;
   currentUser = user;
   let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) {
@@ -661,11 +667,12 @@ async function loadUser(user) {
   document.getElementById('main-app').style.display = 'block';
   setAuthUI(true);
   updateBalanceDisplay();
+  _userLoading = false;
   initSports();
   renderCrash();
   renderMines();
   resumePendingBets();
-  setTimeout(checkForChallenge, 500);
+  setTimeout(checkForChallenge, 400);
 }
 
 function showAuthScreen(context) {
@@ -3149,7 +3156,7 @@ async function acceptDiceChallenge() {
 
     // Credit winner
     if (challengerWins) {
-      // Winner is challenger — credit their wallet
+      // Challenger wins — credit their balance directly in DB
       const { data: wp } = await sb.from('profiles').select('balance, phone').eq('id', challenge.challenger_id).maybeSingle();
       const newBal = (wp?.balance || 0) + winnings;
       await sb.from('profiles').update({ balance: newBal }).eq('id', challenge.challenger_id);
@@ -3164,22 +3171,22 @@ async function acceptDiceChallenge() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: wp.phone,
-            message: '🎲 Your OddsX Dice challenge was accepted by ' + name + '!\n\n🎯 Result: ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ' on 7)' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!'
+            message: '🎲 Your OddsX Dice challenge result!\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n✅ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!\n\n👉 Open OddsX to play again: ' + window.location.origin
           })
         }).catch(() => {});
       }
     } else {
-      // Winner is acceptor (current user)
-      const newBal = userBalance + winnings;
-      await updateBalance(newBal, 'bet_win', winnings, 'Dice challenge won — total ' + total + ' (' + oppPick.toUpperCase() + ')');
-      // Notify challenger they lost
+      // Acceptor wins — credit current user
+      await updateBalance(userBalance - challenge.stake + winnings, 'bet_win', winnings,
+        'Dice challenge won — total ' + total + ' (' + oppPick.toUpperCase() + ')');
+      // Notify challenger they lost via WhatsApp
       const { data: cp } = await sb.from('profiles').select('phone').eq('id', challenge.challenger_id).maybeSingle();
       if (cp?.phone) {
         fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: cp.phone,
-            message: '🎲 Your OddsX Dice challenge result:\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n❌ ' + name + ' won this one. Better luck next time!'
+            message: '🎲 Your OddsX Dice challenge result:\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n❌ ' + name + ' won this one.\n\n👉 Challenge them again: ' + window.location.origin
           })
         }).catch(() => {});
       }
@@ -3190,18 +3197,25 @@ async function acceptDiceChallenge() {
       acceptor_id: currentUser.id,
       acceptor_name: name,
       status: 'settled',
-      die1: d1,
-      die2: d2,
-      total,
-      rerolls,
+      die1: d1, die2: d2, total, rerolls,
       winner_id: winnerId,
     }).eq('id', challenge.id);
 
     closeModal('dice-accept-modal');
     sessionStorage.removeItem('pendingDiceId');
 
-    // Show animated result modal
-    showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName: challenge.challenger_name, acceptorName: name, challengerPick: challenge.challenger_pick, acceptorPick: oppPick, winnings, stake: challenge.stake });
+    // Show result modal to the ACCEPTOR (current user) with correct win/loss framing
+    showDiceResultModal({
+      d1, d2, total, rerolls,
+      winnerId,
+      winnerName,
+      challengerName: challenge.challenger_name,
+      acceptorName: name,
+      challengerPick: challenge.challenger_pick,
+      acceptorPick: oppPick,
+      winnings,
+      stake: challenge.stake
+    });
 
   } catch(e) {
     showToast('Error: ' + e.message);
@@ -3573,14 +3587,38 @@ async function _pollChallengesList() {
       .order('created_at', { ascending: false }).limit(20),
   ]);
 
-  // Only update DOM if p2p-list still exists and we're still on this screen
   if (!document.getElementById('p2p-list') || window._lastP2PScreen !== 'challenges') return;
 
-  _renderChallengeCards(
-    [...(sportsRes.data||[]).map(c=>({...c,_type:'sports'})),
-     ...(diceRes.data||[]).map(c=>({...c,_type:'dice'}))]
-    .sort((a,b) => new Date(b.created_at)-new Date(a.created_at))
+  const all = [
+    ...(sportsRes.data||[]).map(c=>({...c,_type:'sports'})),
+    ...(diceRes.data||[]).map(c=>({...c,_type:'dice'}))
+  ].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
+
+  _renderChallengeCards(all);
+
+  // Refresh balance display in case challenger just won (their balance was updated remotely)
+  await refreshBalance();
+
+  // If a newly-settled dice challenge involves us as challenger and we haven't seen the result yet, show modal
+  const justSettled = all.find(c =>
+    c._type === 'dice' && c.status === 'settled' && c.die1 &&
+    c.challenger_id === currentUser.id &&
+    !sessionStorage.getItem('seenResult_' + c.id)
   );
+  if (justSettled) {
+    sessionStorage.setItem('seenResult_' + justSettled.id, '1');
+    showDiceResultModal({
+      d1: justSettled.die1, d2: justSettled.die2, total: justSettled.total,
+      rerolls: justSettled.rerolls || 0, winnerId: justSettled.winner_id,
+      winnerName: justSettled.winner_id === currentUser.id ? 'You' : justSettled.acceptor_name,
+      challengerName: justSettled.challenger_name,
+      acceptorName: justSettled.acceptor_name || 'Opponent',
+      challengerPick: justSettled.challenger_pick,
+      acceptorPick: justSettled.challenger_pick === 'over' ? 'under' : 'over',
+      winnings: Math.round(justSettled.stake * 2 * 0.95),
+      stake: justSettled.stake
+    });
+  }
 }
 
 async function viewDiceResult(challengeId) {
