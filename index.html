@@ -260,7 +260,13 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div class="auth-card">
     <button class="modal-close" onclick="closeAuthModal()" style="float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
     <div class="auth-logo">ODDS<span>X</span></div>
-    <div class="auth-sub">Kenya's live sports betting platform</div>
+    <!-- Challenge context banner — hidden by default, shown when arriving via challenge link -->
+    <div id="auth-challenge-banner" style="display:none;background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.25);border-radius:10px;padding:12px 14px;margin-bottom:14px;text-align:center">
+      <div id="auth-challenge-icon" style="font-size:28px;margin-bottom:4px">🎲</div>
+      <div id="auth-challenge-text" style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--gold)">You've been challenged!</div>
+      <div id="auth-challenge-sub" style="font-size:12px;color:var(--muted);margin-top:3px">Sign in or create a free account to accept</div>
+    </div>
+    <div class="auth-sub" id="auth-sub-text">Kenya's live sports betting platform</div>
     <div class="auth-tabs">
       <div class="auth-tab active" onclick="switchAuthTab('login')">Sign In</div>
       <div class="auth-tab" onclick="switchAuthTab('signup')">Create Account</div>
@@ -647,14 +653,30 @@ async function loadUser(user) {
   setTimeout(checkForChallenge, 500);
 }
 
-function showAuthScreen() {
-  // Show as modal overlay instead of full page
+function showAuthScreen(context) {
+  const banner = document.getElementById('auth-challenge-banner');
+  const subText = document.getElementById('auth-sub-text');
+  if (context) {
+    document.getElementById('auth-challenge-icon').textContent = context.icon || '🎲';
+    document.getElementById('auth-challenge-text').textContent = context.title || "You've been challenged!";
+    document.getElementById('auth-challenge-sub').textContent = context.sub || 'Sign in or create a free account to accept';
+    banner.style.display = 'block';
+    subText.style.display = 'none';
+    // Default to signup tab for new users arriving via challenge link
+    switchAuthTab('signup');
+  } else {
+    banner.style.display = 'none';
+    subText.style.display = 'block';
+    switchAuthTab('login');
+  }
   document.getElementById('auth-screen').classList.add('show-modal');
-  switchAuthTab('login'); // Show login tab by default
 }
 
 function closeAuthModal() {
   document.getElementById('auth-screen').classList.remove('show-modal');
+  // Clear challenge context
+  document.getElementById('auth-challenge-banner').style.display = 'none';
+  document.getElementById('auth-sub-text').style.display = 'block';
 }
 
 function switchAuthTab(t) {
@@ -3270,7 +3292,14 @@ async function _checkForChallenge() {
     diceId = sessionStorage.getItem('pendingDiceId');
   }
   if (diceId) {
-    if (!currentUser) { showToast('Sign in to accept this Dice challenge'); showAuthScreen(); return; }
+    if (!currentUser) {
+      showAuthScreen({
+        icon: '🎲',
+        title: "You've been challenged to Dice!",
+        sub: 'Sign in or create a free account — takes 30 seconds'
+      });
+      return;
+    }
     const { data: dc, error: dcErr } = await sb.from('dice_challenges')
       .select('*').eq('id', diceId).maybeSingle();
     if (dcErr || !dc) {
@@ -3303,7 +3332,14 @@ async function _checkForChallenge() {
   }
   if (!challengeId) return;
 
-  if (!currentUser) { showToast('Sign in to accept this challenge'); showAuthScreen(); return; }
+  if (!currentUser) {
+    showAuthScreen({
+      icon: '⚔️',
+      title: "You've been challenged!",
+      sub: 'Sign in or create a free account to accept'
+    });
+    return;
+  }
 
   const { data: challenge, error } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
   if (error || !challenge) { sessionStorage.removeItem('pendingChallengeId'); showToast('Challenge not found or expired'); return; }
