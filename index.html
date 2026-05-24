@@ -657,18 +657,18 @@ async function loadUser(user) {
 function showAuthScreen(context) {
   const banner = document.getElementById('auth-challenge-banner');
   const subText = document.getElementById('auth-sub-text');
-  if (context) {
+  const forceTab = context?.forceTab;
+  if (context?.icon || context?.title || context?.sub) {
     document.getElementById('auth-challenge-icon').textContent = context.icon || '🎲';
     document.getElementById('auth-challenge-text').textContent = context.title || "You've been challenged!";
     document.getElementById('auth-challenge-sub').textContent = context.sub || 'Sign in or create a free account to accept';
     banner.style.display = 'block';
     subText.style.display = 'none';
-    // Default to signup tab for new users arriving via challenge link
-    switchAuthTab('signup');
+    switchAuthTab(forceTab || 'signup');
   } else {
     banner.style.display = 'none';
     subText.style.display = 'block';
-    switchAuthTab('login');
+    switchAuthTab(forceTab || 'login');
   }
   document.getElementById('auth-screen').classList.add('show-modal');
 }
@@ -716,22 +716,23 @@ async function signIn() {
     const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
     if (error) {
       showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
-      btn.disabled = false;
-      btn.textContent = 'Sign In';
       return;
     }
     const signedInUser = data?.user || data?.session?.user;
-    if (signedInUser) {
-      await loadUser(signedInUser);
+    if (!signedInUser) {
+      showAuthError('Unable to sign in. Please try again.');
       return;
     }
-    showAuthSuccess('Signed in. Loading your challenge...');
-    setTimeout(() => checkForChallenge(), 500);
+    await loadUser(signedInUser);
+    return;
   } catch(e) {
     showAuthError(e.message);
+  } finally {
+    if (btn.disabled) {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
   }
-  btn.disabled = false;
-  btn.textContent = 'Sign In';
 }
 
 function normalizePhone(raw) {
@@ -816,8 +817,32 @@ async function signOut() {
   toggleDropdown(true);
 }
 
+function renderAvatarDropdown() {
+  const dd = document.getElementById('dropdown');
+  if (!dd) return;
+  if (!currentUser) {
+    dd.innerHTML = `
+      <div class="dd-item" onclick="toggleDropdown(true); showAuthScreen()">🔐 Sign In</div>
+      <div class="dd-item" onclick="toggleDropdown(true); showAuthScreen({forceTab:'signup'})">📝 Create Account</div>
+    `;
+    return;
+  }
+  dd.innerHTML = `
+    <div class="dd-email" id="dd-email"></div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('wallet')">💳 Wallet</div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('history')">📋 Bet History</div>
+    <div class="dd-item" onclick="toggleDropdown(true); showTab('p2p')">⚔️ Challenges</div>
+    <div class="dd-item danger" onclick="toggleDropdown(true); signOut()">🚪 Sign Out</div>
+  `;
+  document.getElementById('dd-email').textContent = currentUser.email || '';
+}
+
 function toggleDropdown(forceClose) {
   const dd = document.getElementById('dropdown');
+  if (!dd) return;
+  if (!forceClose && !dd.classList.contains('open')) {
+    renderAvatarDropdown();
+  }
   dd.classList.toggle('open', forceClose ? false : !dd.classList.contains('open'));
 }
 document.addEventListener('click', e => {
