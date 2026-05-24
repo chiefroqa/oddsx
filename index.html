@@ -122,7 +122,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .sport-chip.active{background:rgba(0,229,160,0.12);border-color:var(--accent);color:var(--accent)}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
 .hist-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
-.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif}
+.hist-dot{width:26px;height:26px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:font-family:'Barlow Condensed',sans-serif}
 
 /* ── CHALLENGE HUB ── */
 .ch-hub{display:flex;flex-direction:column;gap:14px;padding:0}
@@ -373,6 +373,61 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     </div>
     <button class="modal-btn" onclick="acceptChallenge()" id="accept-challenge-btn" disabled style="opacity:0.5;cursor:not-allowed">Select a side to accept</button>
     <button onclick="declineChallenge()" style="width:100%;background:none;border:1px solid rgba(255,71,87,0.3);border-radius:8px;color:var(--danger);font-size:13px;padding:10px;cursor:pointer;margin-top:8px">❌ Decline (95% refund to challenger)</button>
+  </div>
+</div>
+
+<!-- DICE CHALLENGE ACCEPT MODAL -->
+<div class="modal-overlay" id="dice-accept-modal" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <button class="modal-close" onclick="closeModal('dice-accept-modal')" style="position:absolute;top:14px;right:14px">✕</button>
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:36px;margin-bottom:6px">🎲</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700" id="dice-accept-title">Dice Challenge!</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px" id="dice-accept-sub"></div>
+    </div>
+    <div style="background:var(--g3);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Their Pick</div>
+          <div id="dice-accept-their-pick" style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--gold)">—</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Your Side</div>
+          <div id="dice-accept-your-pick" style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--accent)">—</div>
+        </div>
+      </div>
+    </div>
+    <div style="background:rgba(255,201,71,0.08);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--muted)">
+      🎲 Roll happens after you accept · 7 = auto-reroll · Winner takes <span id="dice-accept-winner-takes" style="color:var(--gold);font-weight:700">—</span>
+    </div>
+    <button id="dice-accept-btn" onclick="acceptDiceChallenge()"
+      style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase">
+      🎲 Accept & Roll
+    </button>
+    <button onclick="declineDiceChallenge()"
+      style="width:100%;margin-top:8px;background:none;border:1px solid rgba(255,71,87,0.3);border-radius:8px;color:var(--danger);font-size:13px;padding:10px;cursor:pointer">
+      ❌ Decline (95% refund to challenger)
+    </button>
+  </div>
+</div>
+
+<!-- DICE RESULT MODAL (for viewers / watch mode) -->
+<div class="modal-overlay" id="dice-result-modal" style="display:none">
+  <div class="modal" style="max-width:380px;text-align:center">
+    <button class="modal-close" onclick="closeModal('dice-result-modal')" style="position:absolute;top:14px;right:14px">✕</button>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:16px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase">Result</div>
+    <div style="display:flex;justify-content:center;align-items:center;gap:18px;margin-bottom:16px">
+      <div class="die" id="dr-die1" style="width:64px;height:64px;font-size:32px">⚀</div>
+      <div style="text-align:center">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:2px">TOTAL</div>
+        <div id="dr-total" style="font-family:'Barlow Condensed',sans-serif;font-size:56px;font-weight:900;color:var(--accent);line-height:1">—</div>
+      </div>
+      <div class="die" id="dr-die2" style="width:64px;height:64px;font-size:32px">⚀</div>
+    </div>
+    <div id="dr-rerolls" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
+    <div id="dr-result-line" style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-bottom:16px"></div>
+    <div id="dr-picks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px"></div>
+    <button onclick="closeModal('dice-result-modal')" style="width:100%;background:var(--g3);border:none;border-radius:8px;color:var(--muted);padding:10px;cursor:pointer;font-size:13px">Close</button>
   </div>
 </div>
 
@@ -1401,48 +1456,6 @@ async function confirmChallenge() {
   }
 }
 
-async function checkForChallenge() {
-  // Check URL param first, then fall back to sessionStorage (survives login redirects)
-  const params = new URLSearchParams(window.location.search);
-  let challengeId = params.get('challenge');
-  if (challengeId) {
-    // Persist to sessionStorage so it survives auth redirects / page reloads
-    sessionStorage.setItem('pendingChallengeId', challengeId);
-    // Clean URL now that we've saved the ID
-    window.history.replaceState({}, '', window.location.pathname);
-  } else {
-    // Try sessionStorage fallback (user just logged in or was redirected)
-    challengeId = sessionStorage.getItem('pendingChallengeId');
-  }
-  if (!challengeId) return;
-
-  // If not signed in — don't query DB yet (RLS will block it).
-  // Save the ID and wait for login; loadUser() will call checkForChallenge() again.
-  if (!currentUser) {
-    showToast('Sign in to accept this challenge');
-    showAuthScreen();
-    return;
-  }
-
-  // Signed in — query DB now
-  const { data: challenge, error } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
-  if (error || !challenge) {
-    sessionStorage.removeItem('pendingChallengeId');
-    showToast('Challenge not found or expired');
-    return;
-  }
-  if (challenge.status !== 'open') {
-    sessionStorage.removeItem('pendingChallengeId');
-    showToast('This challenge has already been accepted or expired');
-    return;
-  }
-
-  // Clear storage and show modal
-  sessionStorage.removeItem('pendingChallengeId');
-  pendingAcceptChallenge = challenge;
-  showAcceptModal(challenge);
-}
-
 let selectedAcceptorPick = null;
 
 function showAcceptModal(challenge) {
@@ -2245,7 +2258,7 @@ function renderMines() {
   
   el.innerHTML = `
     <div class="mini-game">
-      <div class="mini-title">💣 Kasongo</div>
+      <div class="mini-title">� Kasongo</div>
       <div class="mini-desc">Reveal gems to multiply your bet. Hit Kasongo and lose it all.</div>
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
@@ -2723,7 +2736,7 @@ async function renderHistory() {
 }
 
 // ─── CHALLENGE HUB STATE ───
-let diceState = { d1: 1, d2: 1, choice: null, spinning: false, result: null };
+let pendingDiceChallenge = null;
 
 function renderP2PChallenges() {
   renderChallengeHub();
@@ -2771,187 +2784,463 @@ function renderCreateChallenge() {
         </div>
         <div class="ch-arrow">›</div>
       </div>
-      <div class="ch-option gold" onclick="renderDiceChallenge()">
+      <div class="ch-option gold" onclick="renderDiceCreate()">
         <div class="ch-icon" style="background:rgba(255,201,71,0.1);border:1px solid rgba(255,201,71,0.2)">🎲</div>
         <div class="ch-info">
           <div class="ch-title" style="color:var(--gold)">Dice Challenge</div>
-          <div class="ch-desc">Roll two dice — bet Over or Under 7. Instant result, pure chance</div>
+          <div class="ch-desc">Roll two dice — Over or Under 7. Share link, opponent rolls live</div>
         </div>
         <div class="ch-arrow">›</div>
       </div>
     </div>`;
 }
 
-function renderDiceChallenge() {
+// ─── DICE P2P — CREATE ───
+function renderDiceCreate() {
+  if (!currentUser) { showAuthScreen(); return; }
   const el = document.getElementById('tab-p2p');
   if (!el) return;
-  diceState = { d1: 1, d2: 1, choice: null, spinning: false, result: null };
   el.innerHTML = `
     <div class="ch-back" onclick="renderCreateChallenge()">‹ Back</div>
     <div class="dice-arena">
       <div class="dice-header">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700">🎲 Dice — Over / Under 7</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">Choose Over or Under, stake your KSH, then roll</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700">🎲 New Dice Challenge</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Pick Over or Under — share link — opponent takes the other side and rolls</div>
       </div>
-      <div class="dice-roll-area">
-        <div class="die" id="die1">⚀</div>
-        <div style="text-align:center">
-          <div style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total</div>
-          <div class="dice-total" id="dice-total">—</div>
-        </div>
-        <div class="die" id="die2">⚀</div>
-      </div>
-      <div class="dice-msg" id="dice-msg"></div>
-      <div class="dice-controls">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Your Prediction</div>
+
+      <div style="padding:20px 18px 0">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Your Pick</div>
         <div class="ou-row">
-          <div class="ou-btn over" id="ou-over" onclick="selectDiceChoice('over')">
+          <div class="ou-btn over" id="ou-over" onclick="selectDicePick('over')">
             <div class="ou-label" style="color:var(--accent)">OVER</div>
-            <div class="ou-sub">Total ≥ 8 · 1.9×</div>
+            <div class="ou-sub">Total ≥ 8 wins</div>
           </div>
-          <div class="ou-btn under" id="ou-under" onclick="selectDiceChoice('under')">
+          <div class="ou-btn under" id="ou-under" onclick="selectDicePick('under')">
             <div class="ou-label" style="color:var(--accent2)">UNDER</div>
-            <div class="ou-sub">Total ≤ 6 · 1.9×</div>
+            <div class="ou-sub">Total ≤ 6 wins</div>
           </div>
         </div>
-        <div class="dice-stake-row">
-          <span style="font-size:11px;color:var(--muted)">KSH</span>
-          <input id="dice-stake" type="number" value="200" min="50" step="50"
-            style="flex:1;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;padding:9px 12px;outline:none">
-          <button id="dice-roll-btn" onclick="rollDice()"
-            style="background:var(--gold);color:#000;border:none;border-radius:8px;padding:10px 22px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:opacity 0.2s">
-            🎲 Roll
-          </button>
+      </div>
+
+      <div class="dice-controls">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Your Stake (KSH)</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+            ${[100,200,500,1000,2000,5000].map(a=>`<div onclick="document.getElementById('dice-create-stake').value=${a};updateDicePreview()" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);transition:all 0.15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='var(--muted)'">${a.toLocaleString()}</div>`).join('')}
+          </div>
+          <div class="dice-stake-row">
+            <span style="font-size:11px;color:var(--muted)">KSH</span>
+            <input id="dice-create-stake" type="number" value="200" min="50" step="50" oninput="updateDicePreview()"
+              style="flex:1;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;padding:9px 12px;outline:none">
+          </div>
         </div>
+        <div id="dice-create-preview" style="background:rgba(255,201,71,0.06);border:1px solid rgba(255,201,71,0.15);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted)">
+          Select Over or Under and set your stake
+        </div>
+        <button id="dice-create-btn" onclick="createDiceChallenge()"
+          style="width:100%;background:var(--gold);color:#000;border:none;border-radius:8px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:1px;text-transform:uppercase">
+          🎲 Create & Share Challenge
+        </button>
       </div>
     </div>
-    <div class="dice-odds-note">🎲 7 = push · exact 7 refunds your stake · house edge 5% on wins</div>
-    <div id="dice-history" style="margin-top:6px"></div>`;
-
-  if (!window.diceHistory) window.diceHistory = [];
-  renderDiceHistory();
+    <div class="dice-odds-note">🎲 Total 7 = auto-reroll · Winner takes 95% of pot · 5% house cut</div>`;
 }
 
-function selectDiceChoice(choice) {
-  diceState.choice = choice;
-  document.getElementById('ou-over').classList.toggle('selected', choice === 'over');
-  document.getElementById('ou-under').classList.toggle('selected', choice === 'under');
+let dicePick = null;
+function selectDicePick(pick) {
+  dicePick = pick;
+  document.getElementById('ou-over').classList.toggle('selected', pick === 'over');
+  document.getElementById('ou-under').classList.toggle('selected', pick === 'under');
+  updateDicePreview();
 }
 
-const DICE_FACES = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+function updateDicePreview() {
+  const stakeEl = document.getElementById('dice-create-stake');
+  const previewEl = document.getElementById('dice-create-preview');
+  if (!stakeEl || !previewEl) return;
+  const stake = parseFloat(stakeEl.value) || 0;
+  if (!dicePick || stake < 50) {
+    previewEl.textContent = 'Select Over or Under and set your stake';
+    return;
+  }
+  const pot = stake * 2;
+  const winnerTakes = Math.round(pot * 0.95);
+  const oppPick = dicePick === 'over' ? 'UNDER' : 'OVER';
+  previewEl.innerHTML = `
+    You pick <strong style="color:${dicePick==='over'?'var(--accent)':'var(--accent2)'}">${dicePick.toUpperCase()}</strong> · 
+    Opponent gets <strong style="color:var(--gold)">${oppPick}</strong><br>
+    Stake: KSH ${stake.toLocaleString()} each · Pot: KSH ${pot.toLocaleString()} · Winner takes <strong style="color:var(--gold)">KSH ${winnerTakes.toLocaleString()}</strong>`;
+}
 
-async function rollDice() {
-  if (diceState.spinning) return;
+async function createDiceChallenge() {
   if (!currentUser) { showAuthScreen(); return; }
-  if (!diceState.choice) return showToast('Pick Over or Under first');
-  const stake = parseFloat(document.getElementById('dice-stake').value) || 0;
+  if (!dicePick) return showToast('Pick Over or Under first');
+  const stake = parseFloat(document.getElementById('dice-create-stake').value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
 
-  diceState.spinning = true;
-  const btn = document.getElementById('dice-roll-btn');
-  btn.disabled = true;
+  const btn = document.getElementById('dice-create-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating...';
 
-  // Deduct stake immediately
-  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Dice game stake');
+  try {
+    const { data: profile } = await sb.from('profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Player';
 
-  // Spin animation
-  const die1El = document.getElementById('die1');
-  const die2El = document.getElementById('die2');
-  const totalEl = document.getElementById('dice-total');
-  const msgEl = document.getElementById('dice-msg');
-  msgEl.className = 'dice-msg';
+    // Deduct challenger stake (escrow)
+    await updateBalance(userBalance - stake, 'bet_loss', stake, 'Dice challenge stake (escrow)');
 
-  die1El.classList.add('spinning');
-  die2El.classList.add('spinning');
+    const { data: challenge, error } = await sb.from('dice_challenges').insert({
+      challenger_id: currentUser.id,
+      challenger_name: name,
+      challenger_pick: dicePick,
+      stake,
+      status: 'open',
+    }).select().single();
+
+    if (error) throw error;
+
+    // Build WhatsApp share message
+    const challengeUrl = window.location.origin + '?dice=' + challenge.id;
+    const oppPick = dicePick === 'over' ? 'UNDER' : 'OVER';
+    const winnerTakes = Math.round(stake * 2 * 0.95);
+    const waMsg = encodeURIComponent(
+      '🎲 ' + name + ' challenged you to a Dice game on OddsX!\n\n' +
+      '⬆️ They picked: ' + dicePick.toUpperCase() + '\n' +
+      '⬇️ You get: ' + oppPick + '\n' +
+      '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+      '🏆 Winner takes: KSH ' + winnerTakes.toLocaleString() + '\n\n' +
+      'Accept & Roll 👉 ' + challengeUrl
+    );
+
+    // Show share screen
+    renderDiceShareScreen(challenge, name, dicePick, stake, waMsg, challengeUrl);
+
+  } catch(e) {
+    showToast('Error creating challenge: ' + e.message);
+    btn.disabled = false; btn.textContent = '🎲 Create & Share Challenge';
+  }
+}
+
+function renderDiceShareScreen(challenge, name, pick, stake, waMsg, shareUrl) {
+  const el = document.getElementById('tab-p2p');
+  if (!el) return;
+  const oppPick = pick === 'over' ? 'UNDER' : 'OVER';
+  const winnerTakes = Math.round(stake * 2 * 0.95);
+
+  el.innerHTML = `
+    <div style="text-align:center;padding:20px 0 10px">
+      <div style="font-size:40px;margin-bottom:8px">🎲</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:700;color:var(--accent)">Challenge Created!</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px">Share with your opponent on WhatsApp</div>
+    </div>
+
+    <div class="dice-arena" style="margin-bottom:14px">
+      <div style="padding:16px 18px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div style="background:var(--g3);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Your Pick</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:${pick==='over'?'var(--accent)':'var(--accent2)'}">
+              ${pick.toUpperCase()}
+            </div>
+          </div>
+          <div style="background:var(--g3);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Their Pick</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--gold)">${oppPick}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">
+          <span>Stake: KSH ${stake.toLocaleString()} each</span>
+          <span>Winner takes: <strong style="color:var(--gold)">KSH ${winnerTakes.toLocaleString()}</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="dice-share-link-text">${shareUrl}</div>
+      <button onclick="copyDiceLink('${shareUrl}')" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:11px;padding:5px 12px;cursor:pointer;white-space:nowrap">Copy</button>
+    </div>
+
+    <a href="https://wa.me/?text=${waMsg}" target="_blank"
+      style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:#25D366;color:#fff;border:none;border-radius:10px;padding:14px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;text-decoration:none;letter-spacing:0.5px;margin-bottom:10px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Share on WhatsApp
+    </a>
+    <button onclick="renderMyChallenges()" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:8px;cursor:pointer">View My Challenges →</button>`;
+}
+
+function copyDiceLink(url) {
+  navigator.clipboard.writeText(url).then(() => showToast('Link copied!')).catch(() => {
+    const el = document.getElementById('dice-share-link-text');
+    if (el) { const r = document.createRange(); r.selectNode(el); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+  });
+}
+
+// ─── DICE P2P — ACCEPT (via share link) ───
+function showDiceAcceptModal(challenge) {
+  pendingDiceChallenge = challenge;
+  const pot = challenge.stake * 2;
+  const winnerTakes = Math.round(pot * 0.95);
+  const oppPick = challenge.challenger_pick === 'over' ? 'UNDER' : 'OVER';
+
+  document.getElementById('dice-accept-title').textContent = challenge.challenger_name + ' challenges you!';
+  document.getElementById('dice-accept-sub').textContent = 'Stake: KSH ' + challenge.stake.toLocaleString() + ' each';
+  document.getElementById('dice-accept-their-pick').textContent = challenge.challenger_pick.toUpperCase();
+  document.getElementById('dice-accept-your-pick').textContent = oppPick;
+  document.getElementById('dice-accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  openModal('dice-accept-modal');
+}
+
+async function acceptDiceChallenge() {
+  if (!currentUser) { showToast('Sign in to accept'); showAuthScreen(); return; }
+  const challenge = pendingDiceChallenge;
+  if (!challenge) return;
+  if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
+  if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
+
+  const btn = document.getElementById('dice-accept-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Rolling...';
+
+  try {
+    const { data: profile } = await sb.from('profiles').select('full_name, phone').eq('id', currentUser.id).maybeSingle();
+    const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Player';
+    const oppPick = challenge.challenger_pick === 'over' ? 'under' : 'over';
+
+    // Deduct acceptor stake
+    await updateBalance(userBalance - challenge.stake, 'bet_loss', challenge.stake, 'Dice challenge stake (escrow)');
+
+    // ── Roll the dice (with rerolls on 7) ──
+    let d1, d2, total, rerolls = 0;
+    do {
+      d1 = Math.ceil(Math.random() * 6);
+      d2 = Math.ceil(Math.random() * 6);
+      total = d1 + d2;
+      if (total === 7) rerolls++;
+    } while (total === 7 && rerolls < 10); // safety cap
+
+    // Determine winner
+    const challengerWins = (challenge.challenger_pick === 'over' && total >= 8) ||
+                           (challenge.challenger_pick === 'under' && total <= 6);
+    const winnerId   = challengerWins ? challenge.challenger_id : currentUser.id;
+    const loserId    = challengerWins ? currentUser.id : challenge.challenger_id;
+    const winnerName = challengerWins ? challenge.challenger_name : name;
+    const pot        = challenge.stake * 2;
+    const winnings   = Math.round(pot * 0.95);
+
+    // Credit winner
+    if (challengerWins) {
+      // Winner is challenger — credit their wallet
+      const { data: wp } = await sb.from('profiles').select('balance, phone').eq('id', challenge.challenger_id).maybeSingle();
+      const newBal = (wp?.balance || 0) + winnings;
+      await sb.from('profiles').update({ balance: newBal }).eq('id', challenge.challenger_id);
+      await sb.from('transactions').insert({
+        user_id: challenge.challenger_id, type: 'bet_win', amount: winnings,
+        label: 'Dice challenge won — total ' + total + ' (' + challenge.challenger_pick.toUpperCase() + ')',
+        balance_after: newBal
+      });
+      // Notify challenger via WhatsApp
+      if (wp?.phone) {
+        fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: wp.phone,
+            message: '🎲 Your OddsX Dice challenge was accepted by ' + name + '!\n\n🎯 Result: ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ' on 7)' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!'
+          })
+        }).catch(() => {});
+      }
+    } else {
+      // Winner is acceptor (current user)
+      const newBal = userBalance + winnings;
+      await updateBalance(newBal, 'bet_win', winnings, 'Dice challenge won — total ' + total + ' (' + oppPick.toUpperCase() + ')');
+      // Notify challenger they lost
+      const { data: cp } = await sb.from('profiles').select('phone').eq('id', challenge.challenger_id).maybeSingle();
+      if (cp?.phone) {
+        fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: cp.phone,
+            message: '🎲 Your OddsX Dice challenge result:\n\n🎯 ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ')' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n❌ ' + name + ' won this one. Better luck next time!'
+          })
+        }).catch(() => {});
+      }
+    }
+
+    // Save result to DB
+    await sb.from('dice_challenges').update({
+      acceptor_id: currentUser.id,
+      acceptor_name: name,
+      status: 'settled',
+      die1: d1,
+      die2: d2,
+      total,
+      rerolls,
+      winner_id: winnerId,
+    }).eq('id', challenge.id);
+
+    closeModal('dice-accept-modal');
+    sessionStorage.removeItem('pendingDiceId');
+
+    // Show animated result modal
+    showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName: challenge.challenger_name, acceptorName: name, challengerPick: challenge.challenger_pick, acceptorPick: oppPick, winnings, stake: challenge.stake });
+
+  } catch(e) {
+    showToast('Error: ' + e.message);
+    console.error(e);
+    btn.disabled = false; btn.textContent = '🎲 Accept & Roll';
+  }
+}
+
+async function declineDiceChallenge() {
+  const challenge = pendingDiceChallenge;
+  if (!challenge) return;
+  if (!confirm('Decline this Dice challenge? The challenger will be refunded 95% of their stake.')) return;
+
+  try {
+    const refund = Math.round(challenge.stake * 0.95);
+    const { data: cp } = await sb.from('profiles').select('balance, phone').eq('id', challenge.challenger_id).maybeSingle();
+    const newBal = (cp?.balance || 0) + refund;
+    await sb.from('profiles').update({ balance: newBal }).eq('id', challenge.challenger_id);
+    await sb.from('transactions').insert({
+      user_id: challenge.challenger_id, type: 'deposit', amount: refund,
+      label: 'Dice challenge declined — 95% refund', balance_after: newBal
+    });
+    await sb.from('dice_challenges').update({ status: 'declined' }).eq('id', challenge.id);
+
+    if (cp?.phone) {
+      fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cp.phone, message: '❌ Your OddsX Dice challenge was declined.\nRefund: KSH ' + refund.toLocaleString() + ' credited to your wallet.' })
+      }).catch(() => {});
+    }
+
+    closeModal('dice-accept-modal');
+    sessionStorage.removeItem('pendingDiceId');
+    showToast('Challenge declined. Challenger refunded 95%.');
+  } catch(e) {
+    showToast('Error: ' + e.message);
+  }
+}
+
+// ─── DICE RESULT ANIMATION MODAL ───
+const DICE_FACES = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+
+function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, challengerName, acceptorName, challengerPick, acceptorPick, winnings, stake }) {
+  const iWon = winnerId === currentUser?.id;
+  const totalEl = document.getElementById('dr-total');
+  const die1El  = document.getElementById('dr-die1');
+  const die2El  = document.getElementById('dr-die2');
+  const rerollEl = document.getElementById('dr-rerolls');
+  const resultEl = document.getElementById('dr-result-line');
+  const picksEl  = document.getElementById('dr-picks');
+
+  // Reset
+  die1El.textContent = '🎲';
+  die2El.textContent = '🎲';
   totalEl.textContent = '?';
   totalEl.style.color = 'var(--muted)';
+  rerollEl.textContent = '';
+  resultEl.textContent = '';
+  picksEl.innerHTML = '';
 
-  let spinCount = 0;
+  openModal('dice-result-modal');
+
+  // Spin animation
+  die1El.classList.add('spinning');
+  die2El.classList.add('spinning');
+
+  let frame = 0;
   const spinInterval = setInterval(() => {
     die1El.textContent = DICE_FACES[Math.floor(Math.random() * 6)];
     die2El.textContent = DICE_FACES[Math.floor(Math.random() * 6)];
-    spinCount++;
+    frame++;
   }, 80);
 
-  await new Promise(r => setTimeout(r, 1400));
-  clearInterval(spinInterval);
+  setTimeout(() => {
+    clearInterval(spinInterval);
+    die1El.classList.remove('spinning');
+    die2El.classList.remove('spinning');
+    die1El.classList.add('landed');
+    die2El.classList.add('landed');
+    die1El.textContent = DICE_FACES[d1 - 1];
+    die2El.textContent = DICE_FACES[d2 - 1];
+    totalEl.textContent = total;
+    totalEl.style.color = iWon ? 'var(--accent)' : 'var(--accent2)';
 
-  // Final roll
-  const r1 = Math.ceil(Math.random() * 6);
-  const r2 = Math.ceil(Math.random() * 6);
-  const total = r1 + r2;
+    if (rerolls > 0) {
+      rerollEl.textContent = '🔄 ' + rerolls + ' reroll' + (rerolls > 1 ? 's' : '') + ' (total was 7)';
+    }
 
-  die1El.classList.remove('spinning');
-  die2El.classList.remove('spinning');
-  die1El.classList.add('landed');
-  die2El.classList.add('landed');
-  die1El.textContent = DICE_FACES[r1 - 1];
-  die2El.textContent = DICE_FACES[r2 - 1];
-  totalEl.textContent = total;
-
-  // Resolve
-  let outcome = null; // 'win', 'lose', 'push'
-  if (total === 7) {
-    outcome = 'push';
-  } else if (diceState.choice === 'over' && total >= 8) {
-    outcome = 'win';
-  } else if (diceState.choice === 'under' && total <= 6) {
-    outcome = 'win';
-  } else {
-    outcome = 'lose';
-  }
-
-  const payout = outcome === 'win' ? Math.floor(stake * 1.9) : outcome === 'push' ? stake : 0;
-
-  if (outcome === 'win') {
-    await updateBalance(userBalance + payout, 'bet_win', payout, 'Dice game win (total ' + total + ')');
-    totalEl.className = 'dice-total';
-    msgEl.className = 'dice-msg win';
-    msgEl.textContent = '🎉 ' + (diceState.choice === 'over' ? 'Over' : 'Under') + ' wins! Total ' + total + ' · +KSH ' + (payout - stake).toLocaleString();
-  } else if (outcome === 'push') {
-    await updateBalance(userBalance + stake, 'bet_win', stake, 'Dice game push (total 7 refund)');
-    totalEl.className = 'dice-total';
-    totalEl.style.color = 'var(--gold)';
-    msgEl.className = 'dice-msg win';
-    msgEl.style.background = 'rgba(255,201,71,0.1)';
-    msgEl.style.color = 'var(--gold)';
-    msgEl.textContent = '🤝 Push! Total is exactly 7 — stake refunded';
-  } else {
-    totalEl.className = 'dice-total lose';
-    msgEl.className = 'dice-msg lose';
-    msgEl.textContent = '❌ ' + (diceState.choice === 'over' ? 'Over' : 'Under') + ' loses — total ' + total;
-  }
-
-  // Record to local history
-  if (!window.diceHistory) window.diceHistory = [];
-  window.diceHistory.unshift({ d1: r1, d2: r2, total, choice: diceState.choice, outcome, stake, payout });
-  if (window.diceHistory.length > 12) window.diceHistory.pop();
-  renderDiceHistory();
-
-  diceState.spinning = false;
-  btn.disabled = false;
-  btn.textContent = '🎲 Roll Again';
-}
-
-function renderDiceHistory() {
-  const el = document.getElementById('dice-history');
-  if (!el || !window.diceHistory?.length) return;
-  el.innerHTML = `
-    <div class="section-label" style="margin-bottom:8px">Recent Rolls</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${window.diceHistory.map(h => {
-        const col = h.outcome === 'win' ? 'var(--accent)' : h.outcome === 'push' ? 'var(--gold)' : 'var(--accent2)';
-        const bg = h.outcome === 'win' ? 'rgba(0,229,160,0.1)' : h.outcome === 'push' ? 'rgba(255,201,71,0.1)' : 'rgba(255,107,53,0.1)';
-        return `<div style="background:${bg};border:1px solid ${col};border-radius:8px;padding:6px 10px;text-align:center;min-width:52px">
-          <div style="font-size:14px">${DICE_FACES[h.d1-1]}${DICE_FACES[h.d2-1]}</div>
-          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${col}">${h.total}</div>
-          <div style="font-size:9px;color:${col};text-transform:uppercase">${h.choice === 'over' ? 'OVR' : 'UND'}</div>
+    setTimeout(() => {
+      resultEl.textContent = iWon ? '🏆 You won KSH ' + winnings.toLocaleString() + '!' : '❌ You lost KSH ' + stake.toLocaleString();
+      resultEl.style.color = iWon ? 'var(--accent)' : 'var(--accent2)';
+      picksEl.innerHTML = `
+        <div style="background:var(--g3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:3px">CHALLENGER (${challengerName})</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${challengerPick==='over'?'var(--accent)':'var(--accent2)'}">
+            ${challengerPick.toUpperCase()}
+          </div>
+        </div>
+        <div style="background:var(--g3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:3px">ACCEPTOR (${acceptorName})</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${acceptorPick==='over'?'var(--accent)':'var(--accent2)'}">
+            ${acceptorPick.toUpperCase()}
+          </div>
         </div>`;
-      }).join('')}
-    </div>`;
+    }, 400);
+  }, 1500);
 }
 
+// ─── checkForChallenge — extended to handle ?dice= links ───
+async function checkForChallenge() {
+  const params = new URLSearchParams(window.location.search);
+
+  // ── Dice challenge link ──
+  let diceId = params.get('dice');
+  if (diceId) {
+    sessionStorage.setItem('pendingDiceId', diceId);
+    window.history.replaceState({}, '', window.location.pathname);
+  } else {
+    diceId = sessionStorage.getItem('pendingDiceId');
+  }
+  if (diceId) {
+    if (!currentUser) { showToast('Sign in to accept this Dice challenge'); showAuthScreen(); return; }
+    const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', diceId).maybeSingle();
+    if (!dc) { sessionStorage.removeItem('pendingDiceId'); showToast('Dice challenge not found'); return; }
+    if (dc.status === 'settled') {
+      // Watch mode — show result animation
+      sessionStorage.removeItem('pendingDiceId');
+      if (dc.die1) {
+        const iWon = dc.winner_id === currentUser?.id;
+        showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
+      } else { showToast('This challenge has already been settled'); }
+      return;
+    }
+    if (dc.status !== 'open') { sessionStorage.removeItem('pendingDiceId'); showToast('This challenge has already been accepted or expired'); return; }
+    sessionStorage.removeItem('pendingDiceId');
+    showDiceAcceptModal(dc);
+    return;
+  }
+
+  // ── Sports P2P challenge link (existing) ──
+  let challengeId = params.get('challenge');
+  if (challengeId) {
+    sessionStorage.setItem('pendingChallengeId', challengeId);
+    window.history.replaceState({}, '', window.location.pathname);
+  } else {
+    challengeId = sessionStorage.getItem('pendingChallengeId');
+  }
+  if (!challengeId) return;
+
+  if (!currentUser) { showToast('Sign in to accept this challenge'); showAuthScreen(); return; }
+
+  const { data: challenge, error } = await sb.from('p2p_challenges').select('*').eq('id', challengeId).maybeSingle();
+  if (error || !challenge) { sessionStorage.removeItem('pendingChallengeId'); showToast('Challenge not found or expired'); return; }
+  if (challenge.status !== 'open') { sessionStorage.removeItem('pendingChallengeId'); showToast('This challenge has already been accepted or expired'); return; }
+  sessionStorage.removeItem('pendingChallengeId');
+  pendingAcceptChallenge = challenge;
+  showAcceptModal(challenge);
+}
+
+// ─── MY CHALLENGES — shows both sports + dice ───
 async function renderMyChallenges() {
   const el = document.getElementById('tab-p2p');
   if (!el) return;
@@ -2969,16 +3258,26 @@ async function renderMyChallenges() {
     return;
   }
 
-  const { data: challenges } = await sb.from('p2p_challenges')
-    .select('*')
-    .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
-    .order('created_at', { ascending: false })
-    .limit(30);
+  // Fetch both sports P2P and dice challenges in parallel
+  const [sportsRes, diceRes] = await Promise.all([
+    sb.from('p2p_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+    sb.from('dice_challenges').select('*')
+      .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
+      .order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  const sportsChallenges = (sportsRes.data || []).map(c => ({ ...c, _type: 'sports' }));
+  const diceChallenges   = (diceRes.data   || []).map(c => ({ ...c, _type: 'dice' }));
+
+  // Merge and sort by date
+  const all = [...sportsChallenges, ...diceChallenges].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const p2pList = document.getElementById('p2p-list');
   if (!p2pList) return;
 
-  if (!challenges?.length) {
+  if (!all.length) {
     p2pList.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px"><div style="font-size:24px;margin-bottom:8px">⚔️</div>No challenges yet — create one to get started!</div>';
     return;
   }
@@ -2986,48 +3285,81 @@ async function renderMyChallenges() {
   const statusConfig = {
     open:     { label: '⏳ Waiting', color: 'rgba(255,201,71,0.15)', border: 'rgba(255,201,71,0.3)', text: 'var(--gold)' },
     matched:  { label: '🎯 In Play', color: 'rgba(0,229,160,0.06)', border: 'rgba(0,229,160,0.2)', text: 'var(--accent)' },
+    rolled:   { label: '🎲 Rolled', color: 'rgba(0,229,160,0.06)', border: 'rgba(0,229,160,0.2)', text: 'var(--accent)' },
     settled:  { label: '✅ Settled', color: 'rgba(0,229,160,0.06)', border: 'rgba(0,229,160,0.15)', text: 'var(--accent)' },
     cleared:  { label: '🤝 Cleared', color: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: 'var(--muted)' },
     declined: { label: '❌ Declined', color: 'rgba(255,71,87,0.06)', border: 'rgba(255,71,87,0.2)', text: 'var(--danger)' },
   };
 
-  p2pList.innerHTML = challenges.map(c => {
+  p2pList.innerHTML = all.map(c => {
+    const isDice = c._type === 'dice';
     const iAmChallenger = c.challenger_id === currentUser.id;
-    const myPick = iAmChallenger ? c.challenger_label : c.acceptor_label;
-    const theirPick = iAmChallenger ? c.acceptor_label : c.challenger_label;
-    const theirName = iAmChallenger ? (c.acceptor_name || 'Waiting for opponent...') : c.challenger_name;
     const cfg = statusConfig[c.status] || statusConfig.open;
     const date = new Date(c.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
     const pot = c.stake * 2;
     const winnings = Math.round(pot * 0.95);
 
-    let resultLine = '';
-    if (c.status === 'settled') {
-      const iWon = c.winner_id === currentUser.id;
-      resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won KSH ' + winnings.toLocaleString() : '❌ You lost KSH ' + c.stake.toLocaleString()) + '</div>';
-    } else if (c.status === 'cleared') {
-      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Bet cleared — unexpected result · KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded</div>';
-    } else if (c.status === 'declined') {
-      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Challenge declined · ' + (iAmChallenger ? 'KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded to you' : 'You declined') + '</div>';
-    } else if (c.status === 'open' && iAmChallenger) {
-      const shareUrl = window.location.origin + '?challenge=' + c.id;
-      const msg = encodeURIComponent('⚔️ ' + c.challenger_name + ' challenges you on OddsX!\n\n🏆 ' + c.challenger_label + '\n💰 KSH ' + c.stake.toLocaleString() + ' each\n\nAccept here 👉 ' + shareUrl);
-      resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + msg + '" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
+    let myPickLabel, theirPickLabel, theirName;
+    if (isDice) {
+      const oppPick = c.challenger_pick === 'over' ? 'UNDER' : 'OVER';
+      myPickLabel   = iAmChallenger ? c.challenger_pick.toUpperCase() : oppPick;
+      theirPickLabel = iAmChallenger ? oppPick : c.challenger_pick.toUpperCase();
+      theirName = iAmChallenger ? (c.acceptor_name || 'Waiting...') : c.challenger_name;
+    } else {
+      myPickLabel   = iAmChallenger ? (c.challenger_label || '—') : (c.acceptor_label || '—');
+      theirPickLabel = iAmChallenger ? (c.acceptor_label || (c.status === 'open' ? 'Not chosen yet' : '—')) : (c.challenger_label || '—');
+      theirName = iAmChallenger ? (c.acceptor_name || 'Waiting for opponent...') : c.challenger_name;
     }
 
-    return '<div style="background:' + cfg.color + ';border:1px solid ' + cfg.border + ';border-radius:8px;padding:12px;margin-bottom:8px">' +
+    let resultLine = '';
+    if (c.status === 'settled' || c.status === 'rolled') {
+      const iWon = c.winner_id === currentUser.id;
+      if (isDice && c.die1) {
+        const rerollNote = c.rerolls ? ' (' + c.rerolls + ' reroll' + (c.rerolls > 1 ? 's' : '') + ')' : '';
+        resultLine = '<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">' +
+          '<div style="font-size:13px">' + DICE_FACES[c.die1-1] + DICE_FACES[c.die2-1] + ' <strong>' + c.total + '</strong>' + rerollNote + '</div>' +
+          '<div style="font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' +
+            (iWon ? '🏆 +KSH ' + winnings.toLocaleString() : '❌ -KSH ' + c.stake.toLocaleString()) +
+          '</div></div>';
+        // View result button
+        resultLine += '<div style="margin-top:6px"><span onclick="viewDiceResult(\''+c.id+'\')" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600">🎲 View roll animation →</span></div>';
+      } else {
+        resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won KSH ' + winnings.toLocaleString() : '❌ You lost KSH ' + c.stake.toLocaleString()) + '</div>';
+      }
+    } else if (c.status === 'cleared') {
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Cleared · KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded</div>';
+    } else if (c.status === 'declined') {
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Declined · ' + (iAmChallenger ? 'KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded' : 'You declined') + '</div>';
+    } else if (c.status === 'open' && iAmChallenger) {
+      if (isDice) {
+        const challengeUrl = window.location.origin + '?dice=' + c.id;
+        const oppPick = c.challenger_pick === 'over' ? 'UNDER' : 'OVER';
+        const waMsg = encodeURIComponent('🎲 ' + c.challenger_name + ' challenged you to Dice on OddsX!\n\n⬆️ They picked: ' + c.challenger_pick.toUpperCase() + '\n⬇️ You get: ' + oppPick + '\n💰 Stake: KSH ' + c.stake.toLocaleString() + ' each\n\nAccept & Roll 👉 ' + challengeUrl);
+        resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + waMsg + '" target="_blank" style="font-size:11px;color:var(--gold);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
+      } else {
+        const shareUrl = window.location.origin + '?challenge=' + c.id;
+        const msg = encodeURIComponent('⚔️ ' + c.challenger_name + ' challenges you on OddsX!\n\n🏆 ' + c.challenger_label + '\n💰 KSH ' + c.stake.toLocaleString() + ' each\n\nAccept here 👉 ' + shareUrl);
+        resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + msg + '" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
+      }
+    }
+
+    const typeTag = isDice
+      ? '<span style="font-size:9px;background:rgba(255,201,71,0.12);color:var(--gold);border:1px solid rgba(255,201,71,0.25);border-radius:20px;padding:1px 7px;font-weight:700;margin-left:6px">🎲 DICE</span>'
+      : '<span style="font-size:9px;background:rgba(0,229,160,0.1);color:var(--accent);border:1px solid rgba(0,229,160,0.2);border-radius:20px;padding:1px 7px;font-weight:700;margin-left:6px">⚽ SPORTS</span>';
+
+    return '<div style="background:' + cfg.color + ';border:1px solid ' + cfg.border + ';border-radius:10px;padding:12px;margin-bottom:10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">' +
-        '<div style="font-size:11px;color:var(--muted)">' + (iAmChallenger ? 'You challenged' : 'Challenged by') + ' <span style="color:var(--text);font-weight:600">' + theirName + '</span></div>' +
+        '<div style="font-size:11px;color:var(--muted)">' + (iAmChallenger ? 'You challenged' : 'Challenged by') + ' <span style="color:var(--text);font-weight:600">' + theirName + '</span>' + typeTag + '</div>' +
         '<span style="font-size:10px;font-weight:700;color:' + cfg.text + ';background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:20px">' + cfg.label + '</span>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">' +
         '<div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:8px">' +
           '<div style="font-size:9px;color:var(--muted);margin-bottom:3px">YOUR PICK</div>' +
-          '<div style="font-size:12px;font-weight:700;color:var(--accent)">' + (myPick || '—') + '</div>' +
+          '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">' + (myPickLabel || '—') + '</div>' +
         '</div>' +
         '<div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:8px">' +
           '<div style="font-size:9px;color:var(--muted);margin-bottom:3px">THEIR PICK</div>' +
-          '<div style="font-size:12px;font-weight:700;color:var(--gold)">' + (theirPick || (c.status === 'open' ? 'Not yet chosen' : '—')) + '</div>' +
+          '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:16px;font-weight:700;color:var(--gold)">' + (theirPickLabel || '—') + '</div>' +
         '</div>' +
       '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
@@ -3037,6 +3369,12 @@ async function renderMyChallenges() {
       resultLine +
     '</div>';
   }).join('');
+}
+
+async function viewDiceResult(challengeId) {
+  const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', challengeId).maybeSingle();
+  if (!dc || !dc.die1) return showToast('Result not available');
+  showDiceResultModal({ d1: dc.die1, d2: dc.die2, total: dc.total, rerolls: dc.rerolls || 0, winnerId: dc.winner_id, winnerName: '', challengerName: dc.challenger_name, acceptorName: dc.acceptor_name || 'Opponent', challengerPick: dc.challenger_pick, acceptorPick: dc.challenger_pick === 'over' ? 'under' : 'over', winnings: Math.round(dc.stake * 2 * 0.95), stake: dc.stake });
 }
 
 // ─── DEPOSIT / WITHDRAW ───
@@ -3075,13 +3413,10 @@ function setAmount(n) {
   }
 })();
 
-const mpesaPhoneInput = document.getElementById('mpesa-phone');
-if (mpesaPhoneInput) {
-  mpesaPhoneInput.addEventListener('input', function() {
-    const preview = document.getElementById('phone-preview');
-    if (preview) preview.textContent = this.value || 'your phone';
-  });
-}
+document.getElementById('mpesa-phone').addEventListener('input', function() {
+  document.getElementById('phone-preview').textContent = this.value || 'your phone';
+});
+
 function showDepositStep2() {
   const amount = parseFloat(document.getElementById('deposit-amount').value);
   if (!amount || amount < 50) return showToast('Enter an amount first (min KSH 50)');
