@@ -712,15 +712,17 @@ async function settleBet(betId, userId, payout, result) {
 
 // ── EARNINGS ──
 async function loadEarnings() {
-  const [betsRes, txnsRes, depositsRes] = await Promise.all([
+  const [betsRes, txnsRes, depositsRes, p2pRes] = await Promise.all([
     sb.from('bets').select('*'),
     sb.from('transactions').select('*'),
-    sb.from('deposit_requests').select('amount, status')
+    sb.from('deposit_requests').select('amount, status'),
+    sb.from('p2p_challenges').select('*')
   ]);
 
   const bets = betsRes.data || [];
   const txns = txnsRes.data || [];
   const deposits = depositsRes.data || [];
+  const challenges = p2pRes.data || [];
 
   // ── SPORTS BETS ──
   const settledBets = bets.filter(b => b.status === 'won' || b.status === 'lost');
@@ -753,13 +755,19 @@ async function loadEarnings() {
   const minesRevenue = minesStaked - minesPaid;
 
   // ── TOTALS ──
-  const totalStaked = sportsStaked + crashStaked + minesStaked;
-  const totalPaid = sportsPaid + crashPaid + minesPaid;
-  const totalRevenue = sportsRevenue + crashRevenue + minesRevenue;
+  // Include P2P challenges (5% house cut of the pot)
+  const settledChallenges = challenges.filter(c => c.status === 'settled');
+  const chStaked = settledChallenges.reduce((s, c) => s + ((c.stake || 0) * 2), 0); // pot
+  const chPaid = settledChallenges.reduce((s, c) => s + (c.winnings || 0), 0);
+  const chRevenue = settledChallenges.reduce((s, c) => s + (((c.stake || 0) * 2) - (c.winnings || 0)), 0);
+
+  const totalStaked = sportsStaked + crashStaked + minesStaked + chStaked;
+  const totalPaid = sportsPaid + crashPaid + minesPaid + chPaid;
+  const totalRevenue = sportsRevenue + crashRevenue + minesRevenue + chRevenue;
   const marginPct = totalStaked > 0 ? ((totalRevenue / totalStaked) * 100).toFixed(1) : 0;
   const totalDeposited = deposits.filter(d => d.status === 'completed').reduce((s,d) => s+(d.amount||0), 0);
   const avgPayout = wonBets.length > 0 ? (sportsPaid / wonBets.length) : 0;
-  const totalWageredAll = bets.reduce((s, b) => s + (b.stake || 0), 0) + crashStaked + minesStaked;
+  const totalWageredAll = bets.reduce((s, b) => s + (b.stake || 0), 0) + crashStaked + minesStaked + chStaked;
 
   // ── UPDATE STAT CARDS ──
   document.getElementById('earn-total-bets').textContent = (bets.length + crashLosses.length + minesLosses.length).toLocaleString();
@@ -776,7 +784,7 @@ async function loadEarnings() {
   breakdown.innerHTML = `
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Revenue by Source</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         <div style="background:rgba(0,229,160,0.06);border:1px solid rgba(0,229,160,0.15);border-radius:8px;padding:14px;text-align:center">
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🎫 Sports Bets</div>
           <div style="font-size:20px;font-weight:700;color:var(--accent)">KSH ${sportsRevenue.toLocaleString()}</div>
@@ -791,6 +799,11 @@ async function loadEarnings() {
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💣 Kasongo</div>
           <div style="font-size:20px;font-weight:700;color:${minesRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${minesRevenue.toLocaleString()}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${minesStaked.toLocaleString()} in · KSH ${minesPaid.toLocaleString()} out</div>
+        </div>
+        <div style="background:rgba(255,201,71,0.06);border:1px solid rgba(255,201,71,0.15);border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⚔️ P2P Challenges</div>
+          <div style="font-size:20px;font-weight:700;color:${chRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${Math.round(chRevenue).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${chStaked.toLocaleString()} pot · KSH ${chPaid.toLocaleString()} paid</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
