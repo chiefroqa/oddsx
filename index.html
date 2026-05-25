@@ -3740,13 +3740,16 @@ async function renderMyChallenges() {
   }
 
   // Fetch both sports P2P and dice challenges in parallel
+  // Only show matched and settled challenges (accepted), limit to 8 each
   const [sportsRes, diceRes] = await Promise.all([
     sb.from('p2p_challenges').select('*')
       .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
-      .order('created_at', { ascending: false }).limit(20),
+      .in('status', ['matched', 'settled', 'cleared'])
+      .order('created_at', { ascending: false }).limit(8),
     sb.from('dice_challenges').select('*')
       .or('challenger_id.eq.' + currentUser.id + ',acceptor_id.eq.' + currentUser.id)
-      .order('created_at', { ascending: false }).limit(20),
+      .in('status', ['matched', 'settled', 'rolled', 'cleared'])
+      .order('created_at', { ascending: false }).limit(8),
   ]);
 
   const sportsChallenges = (sportsRes.data || []).map(c => ({ ...c, _type: 'sports' }));
