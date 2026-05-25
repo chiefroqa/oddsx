@@ -289,15 +289,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="page-title">P2P Challenges</div>
       <div class="page-sub">All player vs player challenges across the platform</div>
       <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
-        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="ch-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">P2P Total</div><div class="stat-value" id="ch-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value gold" id="ch-open">—</div></div>
         <div class="stat-card"><div class="stat-label">Matched</div><div class="stat-value" style="color:#7b8cff" id="ch-matched">—</div></div>
         <div class="stat-card"><div class="stat-label">Settled</div><div class="stat-value green" id="ch-settled">—</div></div>
-        <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value green" id="ch-revenue">—</div></div>
+        <div class="stat-card"><div class="stat-label">P2P Revenue</div><div class="stat-value green" id="ch-revenue">—</div></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <div class="card-title" id="ch-table-title">All Challenges</div>
+          <div class="card-title" id="ch-table-title">All P2P Challenges</div>
           <div style="display:flex;gap:8px">
             <select id="ch-filter" onchange="filterChallenges()" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 10px;outline:none">
               <option value="all">All</option>
@@ -311,6 +311,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           </div>
         </div>
         <div id="challenges-table"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
+      </div>
+
+      <!-- DICE CHALLENGES -->
+      <div style="margin-top:24px">
+        <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+          <div class="stat-card"><div class="stat-label">🎲 Dice Total</div><div class="stat-value" id="dice-total">—</div></div>
+          <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value gold" id="dice-open">—</div></div>
+          <div class="stat-card"><div class="stat-label">Settled</div><div class="stat-value green" id="dice-settled">—</div></div>
+          <div class="stat-card"><div class="stat-label">Dice Revenue</div><div class="stat-value green" id="dice-revenue">—</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🎲 Dice Challenges</div>
+            <div style="display:flex;gap:8px">
+              <select id="dice-filter" onchange="filterDiceChallenges()" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 10px;outline:none">
+                <option value="all">All</option>
+                <option value="open">Open</option>
+                <option value="settled">Settled</option>
+                <option value="declined">Declined</option>
+              </select>
+              <button class="refresh-btn" onclick="loadDiceChallenges()">Refresh</button>
+            </div>
+          </div>
+          <div id="dice-table"><div class="loading-row"><span class="loading"></span>Loading...</div></div>
+        </div>
       </div>
     </div>
 
@@ -396,7 +421,7 @@ async function showPage(id) {
   if (id === 'transactions') await loadTransactions();
   if (id === 'payouts')     await loadPayouts();
   if (id === 'broadcast')   await loadBroadcastUsers();
-  if (id === 'challenges')  await loadChallenges();
+  if (id === 'challenges')  { await loadChallenges(); await loadDiceChallenges(); }
 }
 
 // ── TOAST ──
@@ -462,9 +487,13 @@ async function checkBadges() {
 
 async function checkChallengeBadge() {
   try {
-    const { count } = await sb.from('p2p_challenges').select('id', { count:'exact' }).in('status',['open','matched']);
+    const [p2pRes, diceRes] = await Promise.all([
+      sb.from('p2p_challenges').select('id', { count:'exact' }).in('status',['open','matched']),
+      sb.from('dice_challenges').select('id', { count:'exact' }).eq('status','open')
+    ]);
+    const count = (p2pRes.count || 0) + (diceRes.count || 0);
     const badge = document.getElementById('challenges-badge');
-    if (badge) { badge.textContent = count || 0; badge.style.display = count ? 'inline' : 'none'; }
+    if (badge) { badge.textContent = count; badge.style.display = count ? 'inline' : 'none'; }
   } catch(e) { 
     const badge = document.getElementById('challenges-badge');
     if (badge) badge.style.display = 'none';
@@ -712,17 +741,19 @@ async function settleBet(betId, userId, payout, result) {
 
 // ── EARNINGS ──
 async function loadEarnings() {
-  const [betsRes, txnsRes, depositsRes, p2pRes] = await Promise.all([
+  const [betsRes, txnsRes, depositsRes, p2pRes, diceRes] = await Promise.all([
     sb.from('bets').select('*'),
     sb.from('transactions').select('*'),
     sb.from('deposit_requests').select('amount, status'),
-    sb.from('p2p_challenges').select('*')
+    sb.from('p2p_challenges').select('*'),
+    sb.from('dice_challenges').select('*')
   ]);
 
   const bets = betsRes.data || [];
   const txns = txnsRes.data || [];
   const deposits = depositsRes.data || [];
   const challenges = p2pRes.data || [];
+  const diceAll = diceRes.data || [];
 
   // ── SPORTS BETS ──
   const settledBets = bets.filter(b => b.status === 'won' || b.status === 'lost');
@@ -754,27 +785,33 @@ async function loadEarnings() {
   const minesPaid = minesWins.reduce((s, t) => s + (t.amount || 0), 0);
   const minesRevenue = minesStaked - minesPaid;
 
-  // ── TOTALS ──
-  // Include P2P challenges (5% house cut of the pot)
+  // ── P2P CHALLENGES ──
   const settledChallenges = challenges.filter(c => c.status === 'settled');
   const chStaked = settledChallenges.reduce((s, c) => s + ((c.stake || 0) * 2), 0); // pot
   const chPaid = settledChallenges.reduce((s, c) => s + (c.winnings || 0), 0);
   const chRevenue = settledChallenges.reduce((s, c) => s + (((c.stake || 0) * 2) - (c.winnings || 0)), 0);
 
-  // Debug: log P2P challenge counts and computed revenue for verification
-  try { console.log('EARNINGS DEBUG: p2p_challenges total=', challenges.length, 'settled=', settledChallenges.length, 'chStaked=', chStaked, 'chPaid=', chPaid, 'chRevenue=', chRevenue); } catch(e) {}
+  // ── DICE CHALLENGES ──
+  const settledDice = diceAll.filter(c => c.status === 'settled');
+  const diceStaked = settledDice.reduce((s, c) => s + ((c.stake || 0) * 2), 0); // total pot
+  const dicePaid = settledDice.reduce((s, c) => s + Math.round((c.stake || 0) * 2 * 0.95), 0);
+  const diceRevenue = Math.round(diceStaked * 0.05); // 5% house cut
 
-  const totalStaked = sportsStaked + crashStaked + minesStaked + chStaked;
-  const totalPaid = sportsPaid + crashPaid + minesPaid + chPaid;
-  const totalRevenue = sportsRevenue + crashRevenue + minesRevenue + chRevenue;
+  // Debug
+  try { console.log('EARNINGS DEBUG: p2p settled=', settledChallenges.length, 'chRevenue=', chRevenue, '| dice settled=', settledDice.length, 'diceRevenue=', diceRevenue); } catch(e) {}
+
+  // ── TOTALS ──
+  const totalStaked = sportsStaked + crashStaked + minesStaked + chStaked + diceStaked;
+  const totalPaid = sportsPaid + crashPaid + minesPaid + chPaid + dicePaid;
+  const totalRevenue = sportsRevenue + crashRevenue + minesRevenue + chRevenue + diceRevenue;
   const marginPct = totalStaked > 0 ? ((totalRevenue / totalStaked) * 100).toFixed(1) : 0;
   const totalDeposited = deposits.filter(d => d.status === 'completed').reduce((s,d) => s+(d.amount||0), 0);
   const avgPayout = wonBets.length > 0 ? (sportsPaid / wonBets.length) : 0;
-  const totalWageredAll = bets.reduce((s, b) => s + (b.stake || 0), 0) + crashStaked + minesStaked + chStaked;
+  const totalWageredAll = bets.reduce((s, b) => s + (b.stake || 0), 0) + crashStaked + minesStaked + chStaked + diceStaked;
 
   // ── UPDATE STAT CARDS ──
-  document.getElementById('earn-total-bets').textContent = (bets.length + crashLosses.length + minesLosses.length).toLocaleString();
-  document.getElementById('earn-total-bets-sub').textContent = `${wonBets.length} sports won · ${lostBets.length} lost · ${pendingBets.length} pending · ${crashLosses.length} crash · ${minesLosses.length} mines`;
+  document.getElementById('earn-total-bets').textContent = (bets.length + crashLosses.length + minesLosses.length + diceAll.length).toLocaleString();
+  document.getElementById('earn-total-bets-sub').textContent = `${wonBets.length} sports won · ${lostBets.length} lost · ${pendingBets.length} pending · ${crashLosses.length} crash · ${minesLosses.length} mines · ${settledDice.length} dice`;
   document.getElementById('earn-total-wagered').textContent = 'KSH ' + totalWageredAll.toLocaleString();
   document.getElementById('earn-total-wagered-sub').textContent = 'KSH ' + pendingStake.toLocaleString() + ' pending settlement';
   document.getElementById('earn-total-paid').textContent = 'KSH ' + totalPaid.toLocaleString();
@@ -787,7 +824,7 @@ async function loadEarnings() {
   breakdown.innerHTML = `
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Revenue by Source</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
         <div style="background:rgba(0,229,160,0.06);border:1px solid rgba(0,229,160,0.15);border-radius:8px;padding:14px;text-align:center">
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🎫 Sports Bets</div>
           <div style="font-size:20px;font-weight:700;color:var(--accent)">KSH ${sportsRevenue.toLocaleString()}</div>
@@ -807,6 +844,11 @@ async function loadEarnings() {
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⚔️ P2P Challenges</div>
           <div style="font-size:20px;font-weight:700;color:${chRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${Math.round(chRevenue).toLocaleString()}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${chStaked.toLocaleString()} pot · KSH ${chPaid.toLocaleString()} paid</div>
+        </div>
+        <div style="background:rgba(138,43,226,0.06);border:1px solid rgba(138,43,226,0.2);border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🎲 Dice</div>
+          <div style="font-size:20px;font-weight:700;color:${diceRevenue >= 0 ? 'var(--accent)' : '#ff4757'}">KSH ${diceRevenue.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${diceStaked.toLocaleString()} pot · ${settledDice.length} settled</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
@@ -1082,6 +1124,89 @@ function renderChallengesTable(rows) {
         <td>KSH ${pot.toLocaleString()}</td>
         <td><span style="font-size:10px;font-weight:700;color:${statusColor};background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:20px;text-transform:uppercase">${c.status}</span></td>
         <td>${resultBadge}</td>
+        <td style="color:${houseRev > 0 ? 'var(--accent)' : 'var(--muted)'}">
+          ${houseRev > 0 ? 'KSH ' + houseRev.toLocaleString() : '—'}
+        </td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
+
+// ── DICE CHALLENGES ──
+let allDiceChallenges = [];
+
+async function loadDiceChallenges() {
+  const el = document.getElementById('dice-table');
+  el.innerHTML = '<div class="loading-row"><span class="loading"></span>Loading...</div>';
+
+  const { data } = await sb.from('dice_challenges')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  allDiceChallenges = data || [];
+
+  const open     = allDiceChallenges.filter(c => c.status === 'open').length;
+  const settled  = allDiceChallenges.filter(c => c.status === 'settled').length;
+  const revenue  = allDiceChallenges.filter(c => c.status === 'settled')
+    .reduce((s, c) => s + Math.round((c.stake || 0) * 2 * 0.05), 0);
+
+  document.getElementById('dice-total').textContent    = allDiceChallenges.length;
+  document.getElementById('dice-open').textContent     = open;
+  document.getElementById('dice-settled').textContent  = settled;
+  document.getElementById('dice-revenue').textContent  = 'KSH ' + revenue.toLocaleString();
+
+  renderDiceTable(allDiceChallenges);
+}
+
+function filterDiceChallenges() {
+  const filter = document.getElementById('dice-filter').value;
+  const filtered = filter === 'all' ? allDiceChallenges : allDiceChallenges.filter(c => c.status === filter);
+  renderDiceTable(filtered);
+}
+
+function renderDiceTable(rows) {
+  const el = document.getElementById('dice-table');
+  if (!rows.length) { el.innerHTML = '<div class="loading-row">No dice challenges found</div>'; return; }
+
+  const statusColors = {
+    open:     'var(--gold)',
+    settled:  'var(--accent)',
+    declined: 'var(--danger)',
+  };
+
+  el.innerHTML = `<table>
+    <tr>
+      <th>Date</th>
+      <th>Challenger</th>
+      <th>Their Pick</th>
+      <th>Opponent</th>
+      <th>Stake Each</th>
+      <th>Roll</th>
+      <th>Winner</th>
+      <th>Status</th>
+      <th>Revenue</th>
+    </tr>
+    ${rows.map(c => {
+      const pot = (c.stake || 0) * 2;
+      const houseRev = c.status === 'settled' ? Math.round(pot * 0.05) : 0;
+      const statusColor = statusColors[c.status] || 'var(--muted)';
+      const rollDisplay = c.die1 != null
+        ? `${c.die1} + ${c.die2} = <strong>${c.total}</strong>${c.rerolls ? ` (${c.rerolls} reroll)` : ''}`
+        : '—';
+      const winnerDisplay = c.winner_id
+        ? `<span style="color:var(--accent);font-size:11px">✅ ${c.winner_id === c.challenger_id ? (c.challenger_name || 'Challenger') : (c.acceptor_name || 'Acceptor')}</span>`
+        : '—';
+
+      return `<tr>
+        <td style="font-size:11px;color:var(--muted)">${fmtDate(c.created_at)}</td>
+        <td style="font-size:12px">${c.challenger_name || c.challenger_id?.slice(0,8)}</td>
+        <td style="font-size:11px;color:var(--accent);text-transform:uppercase">${c.challenger_pick || '—'}</td>
+        <td style="font-size:12px">${c.acceptor_name || (c.status === 'open' ? '<span style="color:var(--muted)">Waiting...</span>' : '<span style="color:#ff4757">⚠️ missing</span>')}</td>
+        <td style="font-weight:600">KSH ${(c.stake||0).toLocaleString()}</td>
+        <td style="font-size:12px">${rollDisplay}</td>
+        <td>${winnerDisplay}</td>
+        <td><span style="font-size:10px;font-weight:700;color:${statusColor};background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:20px;text-transform:uppercase">${c.status}</span></td>
         <td style="color:${houseRev > 0 ? 'var(--accent)' : 'var(--muted)'}">
           ${houseRev > 0 ? 'KSH ' + houseRev.toLocaleString() : '—'}
         </td>
