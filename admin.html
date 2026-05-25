@@ -761,6 +761,9 @@ async function loadEarnings() {
   const chPaid = settledChallenges.reduce((s, c) => s + (c.winnings || 0), 0);
   const chRevenue = settledChallenges.reduce((s, c) => s + (((c.stake || 0) * 2) - (c.winnings || 0)), 0);
 
+  // Debug: log P2P challenge counts and computed revenue for verification
+  try { console.log('EARNINGS DEBUG: p2p_challenges total=', challenges.length, 'settled=', settledChallenges.length, 'chStaked=', chStaked, 'chPaid=', chPaid, 'chRevenue=', chRevenue); } catch(e) {}
+
   const totalStaked = sportsStaked + crashStaked + minesStaked + chStaked;
   const totalPaid = sportsPaid + crashPaid + minesPaid + chPaid;
   const totalRevenue = sportsRevenue + crashRevenue + minesRevenue + chRevenue;
