@@ -2581,7 +2581,7 @@ async function crashCash() {
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 200;
   const MAX_PAYOUT = 30000; // KSH max single payout
   const winAmount = Math.min(Math.round(stake * crashMult), MAX_PAYOUT);
-  await updateBalance(userBalance + winAmount, 'bet_win', stake, `Pepea x${crashMult.toFixed(2)}`);
+  await updateBalance(userBalance + winAmount, 'bet_win', winAmount, `Pepea x${crashMult.toFixed(2)}`);
   const m = document.getElementById('cmult');
   if (m) { m.style.color = '#ffc947'; m.style.textShadow = '0 0 30px rgba(255,201,71,0.6)'; }
   const cb = document.getElementById('c-cash');
@@ -2695,7 +2695,7 @@ async function mineCash() {
   mineActive = false;
   const MAX_PAYOUT = 30000; // KSH max single payout
   const win = Math.min(Math.round(mineStake * mineMult), MAX_PAYOUT);
-  await updateBalance(userBalance + win, 'bet_win', mineStake, `Kasongo cashed out at ${mineMult.toFixed(2)}x`);
+  await updateBalance(userBalance + win, 'bet_win', win, `Kasongo cashed out at ${mineMult.toFixed(2)}x`);
   renderMines();
   document.getElementById('m-msg').innerHTML = `<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
 }
