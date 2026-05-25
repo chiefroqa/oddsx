@@ -845,17 +845,29 @@ function switchAuthTab(t) {
 
 function showAuthError(msg) {
   const el = document.getElementById('auth-error');
+  if (!el) {
+    console.warn('showAuthError: missing auth-error element', msg);
+    return;
+  }
   el.textContent = msg; el.style.display = 'block';
-  document.getElementById('auth-success').style.display = 'none';
+  const successEl = document.getElementById('auth-success');
+  if (successEl) successEl.style.display = 'none';
 }
 function showAuthSuccess(msg) {
   const el = document.getElementById('auth-success');
+  if (!el) {
+    console.warn('showAuthSuccess: missing auth-success element', msg);
+    return;
+  }
   el.textContent = msg; el.style.display = 'block';
-  document.getElementById('auth-error').style.display = 'none';
+  const errorEl = document.getElementById('auth-error');
+  if (errorEl) errorEl.style.display = 'none';
 }
 function clearAuthMessages() {
-  document.getElementById('auth-error').style.display = 'none';
-  document.getElementById('auth-success').style.display = 'none';
+  const errorEl = document.getElementById('auth-error');
+  const successEl = document.getElementById('auth-success');
+  if (errorEl) errorEl.style.display = 'none';
+  if (successEl) successEl.style.display = 'none';
 }
 
 async function signIn() {
@@ -866,8 +878,11 @@ async function signIn() {
   const password = document.getElementById('login-password').value;
   if (!email || !password) return showAuthError('Please fill in all fields');
   if (!email.includes('@')) return showAuthError('Enter a valid email address');
-  const btn = document.querySelector('#login-form .auth-btn');
-  btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Signing in...';
+  const btn = document.querySelector('#login-form .auth-btn') || document.querySelector('button[onclick="signIn()"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span>Signing in...';
+  }
   clearAuthMessages();
   try {
     // Attempt sign-in
@@ -901,7 +916,7 @@ async function signIn() {
   } catch(e) {
     showAuthError(e.message);
   } finally {
-    if (btn.disabled) {
+    if (btn) {
       btn.disabled = false;
       btn.textContent = 'Sign In';
     }
