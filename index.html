@@ -1714,11 +1714,38 @@ function selectAcceptorSide(type, label, btn) {
   acceptBtn.textContent = `✅ Accept — ${label}`;
 }
 
+function prefillChallengeFromExisting(challenge) {
+  try {
+    const bet = {
+      gameId: challenge.game_id,
+      leagueSlug: challenge.league_slug,
+      gameDate: challenge.game_date,
+      type: challenge.challenger_pick,
+      label: challenge.challenger_label,
+      homeTeam: challenge.home_team,
+      awayTeam: challenge.away_team
+    };
+    activeChallengeData = { bet, stake: challenge.stake };
+    document.getElementById('challenge-stake').value = challenge.stake;
+    updateChallengePreview();
+    openModal('challenge-modal');
+  } catch (e) {
+    console.warn('prefillChallengeFromExisting failed', e?.message || e);
+    showToast('Unable to prefill rematch. Please create a new challenge.');
+  }
+}
+
 async function acceptChallenge() {
   if (!currentUser) { showToast('Sign in to accept this challenge'); showAuthScreen(); return; }
   const challenge = pendingAcceptChallenge;
   if (!challenge) return;
-  if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
+  if (challenge.challenger_id === currentUser.id) {
+    // If the user opened a link to their own challenge, offer to create a rematch
+    showToast("This is your challenge — create a rematch instead");
+    closeModal('accept-modal');
+    prefillChallengeFromExisting(challenge);
+    return;
+  }
   if (!selectedAcceptorPick) return showToast('Please select your side first');
   if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
 
