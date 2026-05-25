@@ -563,6 +563,20 @@ function initSupabaseClient() {
   }
 }
 
+// Ensure the supabase client is initialized and ready. Polls for a short period.
+async function ensureSupabaseReady(timeoutMs = 3000) {
+  initSupabaseClient();
+  const start = Date.now();
+  while (!sb) {
+    if (typeof supabase !== 'undefined') initSupabaseClient();
+    if (Date.now() - start > timeoutMs) break;
+    // small delay
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return !!sb;
+}
+
 // ─── STATE ───
 let currentUser = null;
 let userBalance = 0;
@@ -608,8 +622,17 @@ async function init() {
 
   // 1. Check for existing session on load
   const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    await loadUser(session.user);
+  let sessionUser = session?.user;
+  if (!sessionUser) {
+    try {
+      const { data: userData } = await sb.auth.getUser();
+      sessionUser = userData?.user;
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (sessionUser) {
+    await loadUser(sessionUser);
   } else {
     // Render lightweight UI immediately; defer heavy data fetches
     renderCrash();
@@ -730,6 +753,9 @@ function clearAuthMessages() {
 }
 
 async function signIn() {
+  // Ensure Supabase client is ready
+  const _ready = await ensureSupabaseReady();
+  if (!_ready) return showAuthError('Authentication service not ready. Please try again.');
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   if (!email || !password) return showAuthError('Please fill in all fields');
@@ -785,6 +811,8 @@ function normalizePhone(raw) {
 }
 
 async function signUp() {
+  const _ready = await ensureSupabaseReady();
+  if (!_ready) return showAuthError('Authentication service not ready. Please try again.');
   const name = document.getElementById('signup-name').value.trim();
   const phoneRaw = document.getElementById('signup-phone').value.trim();
   const email = document.getElementById('signup-email').value.trim();
@@ -846,6 +874,8 @@ async function signUp() {
 }
 
 async function signInGoogle() {
+  const _ready = await ensureSupabaseReady();
+  if (!_ready) return showAuthError('Authentication service not ready. Please try again.');
   await sb.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: window.location.origin }
@@ -3424,6 +3454,12 @@ async function checkForChallenge() {
 }
 
 async function _checkForChallenge() {
+  const _ready = await ensureSupabaseReady();
+  if (!_ready) {
+    // If supabase didn't initialise, show auth screen as fallback
+    showAuthScreen({ icon: '🎲', title: "You've been challenged!", sub: 'Sign in or create a free account — takes 30 seconds' });
+    return;
+  }
   const params = new URLSearchParams(window.location.search);
 
   // ── Dice challenge link ──
@@ -3438,9 +3474,19 @@ async function _checkForChallenge() {
     if (!currentUser) {
       // If our local `currentUser` isn't set yet, double-check Supabase session
       const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) {
+      let sessionUser = session?.user;
+      if (!sessionUser) {
+        // Supabase sometimes returns a session without the user object — try getUser()
+        try {
+          const { data: userData } = await sb.auth.getUser();
+          sessionUser = userData?.user;
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (sessionUser) {
         // Load user into app state and continue handling the link
-        await loadUser(session.user);
+        await loadUser(sessionUser);
       } else {
         showAuthScreen({
           icon: '🎲',
