@@ -879,11 +879,10 @@ async function signIn() {
       return;
     }
 
-    // Supabase can sometimes return session without a full user object in `data`.
-    // Re-query the current user/session to be certain we have the authenticated user.
+    // Prefer `getSession()` (with timeout) to avoid `getUser()` hanging in some environments.
     try {
-      const { data: userData } = await sb.auth.getUser();
-      const signedInUser = userData?.user || data?.user || data?.session?.user;
+      const { data: sessData } = await withTimeout(sb.auth.getSession());
+      const signedInUser = sessData?.session?.user || data?.user || data?.session?.user;
       if (!signedInUser) {
         showAuthError('Unable to sign in. Please try again.');
         return;
@@ -891,7 +890,7 @@ async function signIn() {
       await loadUser(signedInUser);
       return;
     } catch (e) {
-      // Fallback: if getUser failed but signIn returned a session, try to use that
+      // Last-resort fallback to data returned from signInWithPassword
       const signedInUser = data?.user || data?.session?.user;
       if (signedInUser) {
         await loadUser(signedInUser);
