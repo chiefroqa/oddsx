@@ -3593,6 +3593,7 @@ async function playDiceAgain() {
     renderDiceShareScreen(challenge, name, pick, stake, encodeURIComponent('⚔️ ' + name + ' wants a rematch on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + stake.toLocaleString() + ' each\n\nAccept here 👉 ' + challengeUrl), challengeUrl);
   } catch(e) {
     showToast('Error replaying challenge: ' + e.message);
+  } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🎲 Play Again'; }
   }
 }
