@@ -564,7 +564,7 @@ function initSupabaseClient() {
 }
 
 // Ensure the supabase client is initialized and ready. Polls for a short period.
-async function ensureSupabaseReady(timeoutMs = 3000) {
+async function ensureSupabaseReady(timeoutMs = 8000) {
   initSupabaseClient();
   const start = Date.now();
   while (!sb) {
@@ -620,9 +620,14 @@ async function withTimeout(promise, ms = 10000) {
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
+  // Ensure supabase client is ready before checking session
+  await ensureSupabaseReady(8000);
+
   // 1. Check for existing session on load
   const { data: { session } } = await sb.auth.getSession();
+  console.debug('init: getSession ->', session);
   let sessionUser = session?.user;
+  console.debug('_checkForChallenge: initial session ->', session);
   if (!sessionUser) {
     try {
       const { data: userData } = await sb.auth.getUser();
@@ -712,7 +717,8 @@ function showAuthScreen(context) {
     document.getElementById('auth-challenge-sub').textContent = context.sub || 'Sign in or create a free account to accept';
     banner.style.display = 'block';
     subText.style.display = 'none';
-    switchAuthTab(forceTab || 'signup');
+    // When arriving via a challenge link prefer the login tab by default
+    switchAuthTab(forceTab || 'login');
   } else {
     banner.style.display = 'none';
     subText.style.display = 'block';
@@ -765,7 +771,9 @@ async function signIn() {
   clearAuthMessages();
   try {
     // Attempt sign-in
+    console.debug('signIn: attempting signInWithPassword for', email);
     const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
+    console.debug('signIn: signInWithPassword result', { data, error });
     if (error) {
       showAuthError(error.message === 'Invalid login credentials' ? 'Wrong email or password' : error.message);
       return;
@@ -3475,10 +3483,12 @@ async function _checkForChallenge() {
       // If our local `currentUser` isn't set yet, double-check Supabase session
       const { data: { session } } = await sb.auth.getSession();
       let sessionUser = session?.user;
+      console.debug('_checkForChallenge: getSession returned', session);
       if (!sessionUser) {
         // Supabase sometimes returns a session without the user object — try getUser()
         try {
           const { data: userData } = await sb.auth.getUser();
+          console.debug('_checkForChallenge: getUser fallback ->', userData);
           sessionUser = userData?.user;
         } catch (e) {
           // ignore
