@@ -758,14 +758,22 @@ async function init() {
 }
 
 async function loadUser(user) {
-  // Set minimal user state immediately so UI can update fast
+  // Set currentUser FIRST so renderAvatarDropdown builds the logged-in view
   currentUser = user;
+
+  // Rebuild dropdown now that currentUser is set — creates #dd-email via innerHTML
+  renderAvatarDropdown();
+
+  // Safely update avatar initial
   const initials = (user.user_metadata?.full_name || user.email || '?')[0].toUpperCase();
-  document.getElementById('avatar-init').textContent = initials;
-  document.getElementById('dd-email').textContent = user.email || '';
-  // Close auth modal after successful login and show main app
-  document.getElementById('auth-screen').classList.remove('show-modal');
-  document.getElementById('main-app').style.display = 'block';
+  const avatarEl = document.getElementById('avatar-init');
+  if (avatarEl) avatarEl.textContent = initials;
+
+  // Close auth modal and show main app
+  const authScreen = document.getElementById('auth-screen');
+  if (authScreen) authScreen.classList.remove('show-modal');
+  const mainApp = document.getElementById('main-app');
+  if (mainApp) mainApp.style.display = 'block';
 
   // Fetch profile in background with a timeout to avoid blocking the UI
   (async () => {
@@ -812,9 +820,12 @@ function showAuthScreen(context) {
   const subText = document.getElementById('auth-sub-text');
   const forceTab = context?.forceTab;
   if (context?.icon || context?.title || context?.sub) {
-    document.getElementById('auth-challenge-icon').textContent = context.icon || '🎲';
-    document.getElementById('auth-challenge-text').textContent = context.title || "You've been challenged!";
-    document.getElementById('auth-challenge-sub').textContent = context.sub || 'Sign in or create a free account to accept';
+    const iconEl = document.getElementById('auth-challenge-icon');
+    const textEl = document.getElementById('auth-challenge-text');
+    const subEl  = document.getElementById('auth-challenge-sub');
+    if (iconEl) iconEl.textContent = context.icon || '🎲';
+    if (textEl) textEl.textContent = context.title || "You've been challenged!";
+    if (subEl)  subEl.textContent  = context.sub   || 'Sign in or create a free account to accept';
     banner.style.display = 'block';
     subText.style.display = 'none';
     // When arriving via a challenge link prefer the login tab by default
@@ -828,10 +839,12 @@ function showAuthScreen(context) {
 }
 
 function closeAuthModal() {
-  document.getElementById('auth-screen').classList.remove('show-modal');
-  // Clear challenge context
-  document.getElementById('auth-challenge-banner').style.display = 'none';
-  document.getElementById('auth-sub-text').style.display = 'block';
+  const screen = document.getElementById('auth-screen');
+  if (screen) screen.classList.remove('show-modal');
+  const banner = document.getElementById('auth-challenge-banner');
+  if (banner) banner.style.display = 'none';
+  const sub = document.getElementById('auth-sub-text');
+  if (sub) sub.style.display = 'block';
 }
 
 function switchAuthTab(t) {
