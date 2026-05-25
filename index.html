@@ -630,17 +630,13 @@ function initRematchChannel() {
           (async () => {
             if (payload.kind === 'dice') {
               const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', payload.challengeId).maybeSingle();
-              if (dc) showDiceAcceptModal(dc);
+              if (dc) showRematchToast(dc, 'dice');
             } else {
               const { data: pc } = await sb.from('p2p_challenges').select('*').eq('id', payload.challengeId).maybeSingle();
               if (pc) {
                 pendingAcceptChallenge = pc;
-                // If logged in show accept modal, otherwise show auth screen which will resume checkForChallenge
-                if (currentUser) {
-                  showAcceptModalFor(pc);
-                } else {
-                  showAuthScreen({ icon: '⚔️', title: "You've been challenged!", sub: 'Sign in or create a free account to accept' });
-                }
+                // Show a toast invitation and open modal only if user clicks
+                showRematchToast(pc, 'p2p');
               }
             }
           })();
@@ -660,6 +656,43 @@ function showAcceptModalFor(challenge) {
   // Otherwise use the P2P accept modal flow
   pendingAcceptChallenge = challenge;
   showAcceptModal();
+}
+
+function showRematchToast(challenge, kind) {
+  // Create a lightweight toast with an Open button to avoid auto-starting rolls
+  const id = 'rematch-toast';
+  // Remove existing
+  const prev = document.getElementById(id);
+  if (prev) prev.remove();
+  const el = document.createElement('div');
+  el.id = id;
+  el.style.position = 'fixed';
+  el.style.right = '18px';
+  el.style.bottom = '18px';
+  el.style.zIndex = 9999;
+  el.style.background = 'linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.8))';
+  el.style.border = '1px solid rgba(255,255,255,0.06)';
+  el.style.padding = '12px 14px';
+  el.style.borderRadius = '10px';
+  el.style.color = '#fff';
+  el.style.minWidth = '260px';
+  const title = kind === 'dice' ? (challenge.challenger_name + ' sent a Dice rematch') : (challenge.challenger_name + ' challenged you');
+  el.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${title}</div><div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px">Stake: KSH ${challenge.stake.toLocaleString()}</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="rematch-open" style="background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#000;font-weight:700;cursor:pointer">Open</button><button id="rematch-dismiss" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer">Dismiss</button></div>`;
+  document.body.appendChild(el);
+  document.getElementById('rematch-open').addEventListener('click', () => {
+    el.remove();
+    if (!currentUser) {
+      // Ask user to sign in first; pendingAcceptChallenge already set for when they return
+      pendingAcceptChallenge = challenge;
+      showAuthScreen({ icon: '⚔️', title: "You've been challenged!", sub: 'Sign in or create a free account to accept', forceTab: 'login' });
+      return;
+    }
+    if (kind === 'dice') showDiceAcceptModal(challenge);
+    else showAcceptModalFor(challenge);
+  });
+  document.getElementById('rematch-dismiss').addEventListener('click', () => el.remove());
+  // Auto-dismiss after 30s
+  setTimeout(() => { el.remove(); }, 30000);
 }
 
 async function init() {
