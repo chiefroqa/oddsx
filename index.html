@@ -579,6 +579,7 @@ async function ensureSupabaseReady(timeoutMs = 8000) {
 
 // ─── STATE ───
 let currentUser = null;
+let rematchChannel = null;
 let userBalance = 0;
 let selections = {};
 let crashState = 'idle', crashMult = 1.0, crashInterval = null, crashTarget = 0;
@@ -617,11 +618,56 @@ async function withTimeout(promise, ms = 10000) {
   return Promise.race([promise, timeout]);
 }
 
+function initRematchChannel() {
+  if (!sb) return;
+  try {
+    rematchChannel = sb.channel('rematch-channel');
+    rematchChannel.on('broadcast', { event: 'rematch' }, ({ payload }) => {
+      try {
+        if (!payload || !payload.target) return;
+        if (currentUser && payload.target === currentUser.id) {
+          console.debug('rematch broadcast received for me', payload);
+          (async () => {
+            if (payload.kind === 'dice') {
+              const { data: dc } = await sb.from('dice_challenges').select('*').eq('id', payload.challengeId).maybeSingle();
+              if (dc) showDiceAcceptModal(dc);
+            } else {
+              const { data: pc } = await sb.from('p2p_challenges').select('*').eq('id', payload.challengeId).maybeSingle();
+              if (pc) {
+                pendingAcceptChallenge = pc;
+                // If logged in show accept modal, otherwise show auth screen which will resume checkForChallenge
+                if (currentUser) {
+                  showAcceptModalFor(pc);
+                } else {
+                  showAuthScreen({ icon: '⚔️', title: "You've been challenged!", sub: 'Sign in or create a free account to accept' });
+                }
+              }
+            }
+          })();
+        }
+      } catch (e) { console.warn('rematch broadcast handler error', e); }
+    }).subscribe();
+  } catch (e) { console.warn('initRematchChannel failed', e); }
+}
+
+function showAcceptModalFor(challenge) {
+  if (!challenge) return;
+  // For dice challenges use the dice accept modal
+  if (challenge.game_id === undefined && challenge.challenger_pick) {
+    showDiceAcceptModal(challenge);
+    return;
+  }
+  // Otherwise use the P2P accept modal flow
+  pendingAcceptChallenge = challenge;
+  showAcceptModal();
+}
+
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
   // Ensure supabase client is ready before checking session
   await ensureSupabaseReady(8000);
+  initRematchChannel();
 
   // 1. Check for existing session on load
   const { data: { session } } = await sb.auth.getSession();
@@ -1647,6 +1693,13 @@ async function confirmChallenge() {
 
     // Show share modal with WhatsApp link
     showChallengeShareModal(challenge, bet, stake, msg);
+    // If this was a prefilled rematch with a known target, broadcast to them
+    try {
+      const target = activeChallengeData?.targetId;
+      if (target && rematchChannel) {
+        await rematchChannel.send({ type: 'broadcast', event: 'rematch', payload: { target, challengeId: challenge.id, kind: 'p2p' } });
+      }
+    } catch (e) { console.warn('rematch broadcast send failed', e); }
 
   } catch(e) {
     showToast('Error creating challenge: ' + e.message);
@@ -1725,7 +1778,9 @@ function prefillChallengeFromExisting(challenge) {
       homeTeam: challenge.home_team,
       awayTeam: challenge.away_team
     };
-    activeChallengeData = { bet, stake: challenge.stake };
+    // Set targetId so when confirming we can notify the original opponent
+    const targetId = (currentUser && currentUser.id === challenge.challenger_id) ? challenge.acceptor_id : challenge.challenger_id;
+    activeChallengeData = { bet, stake: challenge.stake, targetId };
     document.getElementById('challenge-stake').value = challenge.stake;
     updateChallengePreview();
     openModal('challenge-modal');
@@ -3449,6 +3504,13 @@ async function playDiceAgain() {
       status: 'open',
     }).select().single();
     if (error || !challenge) throw error || new Error('Failed to create replay challenge');
+
+    // Broadcast rematch to opponent in real-time (if channel available)
+    try {
+      if (rematchChannel) {
+        await rematchChannel.send({ type: 'broadcast', event: 'rematch', payload: { target: opponentId, challengeId: challenge.id, kind: 'dice' } });
+      }
+    } catch (e) { console.warn('rematch broadcast send failed', e); }
 
     const challengeUrl = window.location.origin + '?dice=' + challenge.id;
     const { data: oppProfile } = await sb.from('profiles').select('phone').eq('id', opponentId).maybeSingle();
