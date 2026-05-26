@@ -719,11 +719,16 @@ function showRematchToast(challenge, kind) {
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
-  // Ensure supabase client is ready before checking session
-  await ensureSupabaseReady(8000);
+  // Ensure supabase client is ready before checking session (longer timeout to tolerate slow script load)
+  const ready = await ensureSupabaseReady(20000);
+  if (!ready) {
+    console.warn('Supabase client not ready; retrying init in 2s');
+    setTimeout(() => { init(); }, 2000);
+    return;
+  }
   initRematchChannel();
 
-  // 1. Check for existing session on load — this restores the saved session from localStorage
+  // 1. Check for existing session on load — restore saved session from Supabase client
   let session = null;
   try {
     const { data } = await sb.auth.getSession();
@@ -3417,6 +3422,8 @@ async function acceptDiceChallenge() {
   const challenge = pendingDiceChallenge;
   if (!challenge) return;
   if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
+  // Ensure we have an up-to-date balance before checking
+  try { await refreshBalance(); } catch(e) { console.warn('refreshBalance failed before acceptDiceChallenge', e); }
   if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
 
   const btn = document.getElementById('dice-accept-btn');
@@ -3616,6 +3623,7 @@ async function playDiceAgain() {
   if (!currentUser) { showToast('Sign in to replay'); showAuthScreen(); return; }
   const context = lastDiceChallengeContext;
   if (!context || !context.challengeId) return showToast('Unable to replay this challenge right now');
+  try { await refreshBalance(); } catch(e) { console.warn('refreshBalance failed before playDiceAgain', e); }
   if (context.stake > userBalance) return showToast('Insufficient balance for replay');
 
   const isCurrentUserChallenger = currentUser.id === context.challengerId;
