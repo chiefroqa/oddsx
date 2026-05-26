@@ -811,6 +811,27 @@ async function loadUser(user) {
   setTimeout(() => { initSports(); }, 700);
   resumePendingBets();
 
+  // Settle any matched P2P challenges after login
+  (async () => {
+    try {
+      await settleP2PChallenges();
+    } catch (e) {
+      console.error('P2P settle on login failed:', e);
+    }
+  })();
+
+  // Periodically check for P2P challenge settlement while the user is active
+  if (!window.pendingChallengesCheckInterval) {
+    window.pendingChallengesCheckInterval = setInterval(async () => {
+      if (!currentUser) return;
+      try {
+        await settleP2PChallenges();
+      } catch (e) {
+        console.error('Periodic P2P settle failed:', e);
+      }
+    }, 300000);
+  }
+
   // If user arrived via a challenge link, pick it up from sessionStorage
   setTimeout(checkForChallenge, 500);
 }
