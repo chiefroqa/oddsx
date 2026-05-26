@@ -738,15 +738,16 @@ async function init() {
   }
   console.debug('init: session restored ->', !!session);
   let sessionUser = session?.user;
-  console.debug('_checkForChallenge: initial session ->', session);
   if (!sessionUser) {
     try {
       const { data: userData } = await sb.auth.getUser();
       sessionUser = userData?.user;
+      console.debug('init: getUser fallback ->', !!sessionUser);
     } catch (e) {
-      // ignore
+      console.warn('init getUser fallback failed:', e);
     }
   }
+  console.debug('_checkForChallenge: initial session ->', session);
   if (sessionUser) {
     await loadUser(sessionUser);
   } else {
@@ -3696,10 +3697,14 @@ async function checkForChallenge() {
   try { await _checkForChallenge(); } finally { checkForChallenge._running = false; }
 }
 
-async function _checkForChallenge() {
+async function _checkForChallenge(retries = 3) {
   const _ready = await ensureSupabaseReady();
   if (!_ready) {
-    // If supabase didn't initialise, show auth screen as fallback
+    if (retries > 0) {
+      console.warn('Supabase not ready for challenge handling, retrying...', retries);
+      setTimeout(() => _checkForChallenge(retries - 1), 1000);
+      return;
+    }
     showAuthScreen({ icon: '🎲', title: "You've been challenged!", sub: 'Sign in or create a free account — takes 30 seconds' });
     return;
   }
