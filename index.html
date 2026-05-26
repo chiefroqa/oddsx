@@ -723,9 +723,15 @@ async function init() {
   await ensureSupabaseReady(8000);
   initRematchChannel();
 
-  // 1. Check for existing session on load
-  const { data: { session } } = await sb.auth.getSession();
-  console.debug('init: getSession ->', session);
+  // 1. Check for existing session on load — this restores the saved session from localStorage
+  let session = null;
+  try {
+    const { data } = await sb.auth.getSession();
+    session = data?.session;
+  } catch (e) {
+    console.warn('getSession failed:', e);
+  }
+  console.debug('init: session restored ->', !!session);
   let sessionUser = session?.user;
   console.debug('_checkForChallenge: initial session ->', session);
   if (!sessionUser) {
@@ -1082,8 +1088,15 @@ function updateBalanceDisplay() {
 }
 
 async function refreshBalance() {
-  const { data } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
-  if (data) { userBalance = data.balance; updateBalanceDisplay(); }
+  if (!currentUser) return; // Guard against null user
+  try {
+    const { data, error } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
+    if (error) throw error;
+    if (data) { userBalance = data.balance; updateBalanceDisplay(); }
+  } catch (e) {
+    console.error('refreshBalance failed:', e.message);
+    throw e;
+  }
 }
 
 async function updateBalance(newBalance, txType, txAmount, txLabel) {
@@ -2872,8 +2885,24 @@ async function checkAndSettlePendingBets() {
 }
 
 async function renderWallet() {
-  document.getElementById('tab-wallet').innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
-  await refreshBalance();
+  const walletEl = document.getElementById('tab-wallet');
+  if (!walletEl) return;
+  
+  // Guard: ensure user is logged in
+  if (!currentUser) {
+    walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Please sign in to view wallet</div>`;
+    return;
+  }
+  
+  walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
+  
+  try {
+    await refreshBalance();
+  } catch (e) {
+    console.error('renderWallet: balance refresh failed:', e);
+    walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">⚠ Error loading wallet. Please refresh the page.</div>`;
+    return;
+  }
   const el = document.getElementById('tab-wallet');
   el.innerHTML = `
     <div class="wallet-card">
@@ -2912,42 +2941,48 @@ async function renderWallet() {
   if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
     allTxs = transactionCache;
   } else {
-    // Fetch from all three tables in parallel
-    const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
-      sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-      sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-      sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-    ]);
+    try {
+      // Fetch from all three tables in parallel
+      const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
+        sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+        sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+        sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+      ]);
 
-    // Normalize deposits
-    const deposits = (depositsRes.data || []).map(d => ({
-      id: d.id,
-      type: 'deposit',
-      amount: d.amount,
-      mpesa_code: d.mpesa_code,
-      status: d.status,
-      created_at: d.created_at,
-      _source: 'deposit_requests'
-    }));
+      // Normalize deposits
+      const deposits = (depositsRes.data || []).map(d => ({
+        id: d.id,
+        type: 'deposit',
+        amount: d.amount,
+        mpesa_code: d.mpesa_code,
+        status: d.status,
+        created_at: d.created_at,
+        _source: 'deposit_requests'
+      }));
 
-    // Normalize withdrawals
-    const withdrawals = (withdrawalsRes.data || []).map(w => ({
-      id: w.id,
-      type: 'withdrawal',
-      amount: w.amount,
-      phone: w.phone,
-      status: w.status || 'pending',
-      created_at: w.created_at,
-      _source: 'withdrawal_requests'
-    }));
+      // Normalize withdrawals
+      const withdrawals = (withdrawalsRes.data || []).map(w => ({
+        id: w.id,
+        type: 'withdrawal',
+        amount: w.amount,
+        phone: w.phone,
+        status: w.status || 'pending',
+        created_at: w.created_at,
+        _source: 'withdrawal_requests'
+      }));
 
-    // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
-    const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
+      // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
+      const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
 
-    // Merge and sort by date
-    allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-    transactionCache = allTxs;
-    transactionCacheTime = Date.now();
+      // Merge and sort by date
+      allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      transactionCache = allTxs;
+      transactionCacheTime = Date.now();
+    } catch (e) {
+      console.error('Failed to fetch transactions:', e);
+      txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">⚠ Error loading transactions. Please refresh.</div>`;
+      return;
+    }
   }
 
   window._allTxs = allTxs;
