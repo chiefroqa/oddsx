@@ -719,35 +719,23 @@ function showRematchToast(challenge, kind) {
 async function init() {
   document.getElementById('main-app').style.display = 'block';
 
-  // Ensure supabase client is ready before checking session (longer timeout to tolerate slow script load)
-  const ready = await ensureSupabaseReady(20000);
-  if (!ready) {
-    console.warn('Supabase client not ready; retrying init in 2s');
-    setTimeout(() => { init(); }, 2000);
-    return;
-  }
+  // Ensure supabase client is ready before checking session
+  await ensureSupabaseReady(8000);
   initRematchChannel();
 
-  // 1. Check for existing session on load — restore saved session from Supabase client
-  let session = null;
-  try {
-    const { data } = await sb.auth.getSession();
-    session = data?.session;
-  } catch (e) {
-    console.warn('getSession failed:', e);
-  }
-  console.debug('init: session restored ->', !!session);
+  // 1. Check for existing session on load
+  const { data: { session } } = await sb.auth.getSession();
+  console.debug('init: getSession ->', session);
   let sessionUser = session?.user;
+  console.debug('_checkForChallenge: initial session ->', session);
   if (!sessionUser) {
     try {
       const { data: userData } = await sb.auth.getUser();
       sessionUser = userData?.user;
-      console.debug('init: getUser fallback ->', !!sessionUser);
     } catch (e) {
-      console.warn('init getUser fallback failed:', e);
+      // ignore
     }
   }
-  console.debug('_checkForChallenge: initial session ->', session);
   if (sessionUser) {
     await loadUser(sessionUser);
   } else {
@@ -822,27 +810,6 @@ async function loadUser(user) {
   // Defer sports loading so app feels responsive
   setTimeout(() => { initSports(); }, 700);
   resumePendingBets();
-
-  // Settle any matched P2P challenges after login
-  (async () => {
-    try {
-      await settleP2PChallenges();
-    } catch (e) {
-      console.error('P2P settle on login failed:', e);
-    }
-  })();
-
-  // Periodically check for P2P challenge settlement while the user is active
-  if (!window.pendingChallengesCheckInterval) {
-    window.pendingChallengesCheckInterval = setInterval(async () => {
-      if (!currentUser) return;
-      try {
-        await settleP2PChallenges();
-      } catch (e) {
-        console.error('Periodic P2P settle failed:', e);
-      }
-    }, 300000);
-  }
 
   // If user arrived via a challenge link, pick it up from sessionStorage
   setTimeout(checkForChallenge, 500);
@@ -1094,15 +1061,8 @@ function updateBalanceDisplay() {
 }
 
 async function refreshBalance() {
-  if (!currentUser) return; // Guard against null user
-  try {
-    const { data, error } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
-    if (error) throw error;
-    if (data) { userBalance = data.balance; updateBalanceDisplay(); }
-  } catch (e) {
-    console.error('refreshBalance failed:', e.message);
-    throw e;
-  }
+  const { data } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
+  if (data) { userBalance = data.balance; updateBalanceDisplay(); }
 }
 
 async function updateBalance(newBalance, txType, txAmount, txLabel) {
@@ -2891,24 +2851,8 @@ async function checkAndSettlePendingBets() {
 }
 
 async function renderWallet() {
-  const walletEl = document.getElementById('tab-wallet');
-  if (!walletEl) return;
-  
-  // Guard: ensure user is logged in
-  if (!currentUser) {
-    walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Please sign in to view wallet</div>`;
-    return;
-  }
-  
-  walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
-  
-  try {
-    await refreshBalance();
-  } catch (e) {
-    console.error('renderWallet: balance refresh failed:', e);
-    walletEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">⚠ Error loading wallet. Please refresh the page.</div>`;
-    return;
-  }
+  document.getElementById('tab-wallet').innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
+  await refreshBalance();
   const el = document.getElementById('tab-wallet');
   el.innerHTML = `
     <div class="wallet-card">
@@ -2947,48 +2891,42 @@ async function renderWallet() {
   if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
     allTxs = transactionCache;
   } else {
-    try {
-      // Fetch from all three tables in parallel
-      const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
-        sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-        sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-        sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-      ]);
+    // Fetch from all three tables in parallel
+    const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
+      sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+      sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+      sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
+    ]);
 
-      // Normalize deposits
-      const deposits = (depositsRes.data || []).map(d => ({
-        id: d.id,
-        type: 'deposit',
-        amount: d.amount,
-        mpesa_code: d.mpesa_code,
-        status: d.status,
-        created_at: d.created_at,
-        _source: 'deposit_requests'
-      }));
+    // Normalize deposits
+    const deposits = (depositsRes.data || []).map(d => ({
+      id: d.id,
+      type: 'deposit',
+      amount: d.amount,
+      mpesa_code: d.mpesa_code,
+      status: d.status,
+      created_at: d.created_at,
+      _source: 'deposit_requests'
+    }));
 
-      // Normalize withdrawals
-      const withdrawals = (withdrawalsRes.data || []).map(w => ({
-        id: w.id,
-        type: 'withdrawal',
-        amount: w.amount,
-        phone: w.phone,
-        status: w.status || 'pending',
-        created_at: w.created_at,
-        _source: 'withdrawal_requests'
-      }));
+    // Normalize withdrawals
+    const withdrawals = (withdrawalsRes.data || []).map(w => ({
+      id: w.id,
+      type: 'withdrawal',
+      amount: w.amount,
+      phone: w.phone,
+      status: w.status || 'pending',
+      created_at: w.created_at,
+      _source: 'withdrawal_requests'
+    }));
 
-      // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
-      const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
+    // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
+    const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
 
-      // Merge and sort by date
-      allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-      transactionCache = allTxs;
-      transactionCacheTime = Date.now();
-    } catch (e) {
-      console.error('Failed to fetch transactions:', e);
-      txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">⚠ Error loading transactions. Please refresh.</div>`;
-      return;
-    }
+    // Merge and sort by date
+    allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    transactionCache = allTxs;
+    transactionCacheTime = Date.now();
   }
 
   window._allTxs = allTxs;
@@ -3423,8 +3361,6 @@ async function acceptDiceChallenge() {
   const challenge = pendingDiceChallenge;
   if (!challenge) return;
   if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
-  // Ensure we have an up-to-date balance before checking
-  try { await refreshBalance(); } catch(e) { console.warn('refreshBalance failed before acceptDiceChallenge', e); }
   if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
 
   const btn = document.getElementById('dice-accept-btn');
@@ -3624,7 +3560,6 @@ async function playDiceAgain() {
   if (!currentUser) { showToast('Sign in to replay'); showAuthScreen(); return; }
   const context = lastDiceChallengeContext;
   if (!context || !context.challengeId) return showToast('Unable to replay this challenge right now');
-  try { await refreshBalance(); } catch(e) { console.warn('refreshBalance failed before playDiceAgain', e); }
   if (context.stake > userBalance) return showToast('Insufficient balance for replay');
 
   const isCurrentUserChallenger = currentUser.id === context.challengerId;
@@ -3697,14 +3632,10 @@ async function checkForChallenge() {
   try { await _checkForChallenge(); } finally { checkForChallenge._running = false; }
 }
 
-async function _checkForChallenge(retries = 3) {
+async function _checkForChallenge() {
   const _ready = await ensureSupabaseReady();
   if (!_ready) {
-    if (retries > 0) {
-      console.warn('Supabase not ready for challenge handling, retrying...', retries);
-      setTimeout(() => _checkForChallenge(retries - 1), 1000);
-      return;
-    }
+    // If supabase didn't initialise, show auth screen as fallback
     showAuthScreen({ icon: '🎲', title: "You've been challenged!", sub: 'Sign in or create a free account — takes 30 seconds' });
     return;
   }
