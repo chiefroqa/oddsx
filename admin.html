@@ -776,7 +776,7 @@ async function loadEarnings() {
   const crashPaid = crashWins.reduce((s, t) => s + (t.amount || 0), 0);
   const crashRevenue = crashStaked - crashPaid;
 
-  // ── KASONGO (MINES) GAME ── match type or label
+  // ── MINES GAME ── match type or label
   const isKasongoLoss = t => t.type === 'mines_loss' || t.type === 'bet_loss' && (t.label||'').toLowerCase().includes('kasongo') || (t.label||'').toLowerCase().includes('mines game');
   const isKasongoWin = t => t.type === 'mines_win' || (t.label||'').toLowerCase().includes('kasongo cashed') || (t.label||'').toLowerCase().includes('mines cashed');
   const minesLosses = txns.filter(isKasongoLoss);
@@ -836,7 +836,7 @@ async function loadEarnings() {
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${crashStaked.toLocaleString()} in · KSH ${crashPaid.toLocaleString()} out</div>
         </div>
         <div style="background:rgba(255,201,71,0.06);border:1px solid rgba(255,201,71,0.15);border-radius:8px;padding:14px;text-align:center">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💣 Kasongo</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💣 Mines</div>
           <div style="font-size:20px;font-weight:700;color:${minesRevenue >= 0 ? 'var(--accent)' : '#ff4757'}"">KSH ${minesRevenue.toLocaleString()}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">KSH ${minesStaked.toLocaleString()} in · KSH ${minesPaid.toLocaleString()} out</div>
         </div>

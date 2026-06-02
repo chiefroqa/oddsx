@@ -2621,8 +2621,8 @@ function renderMines() {
   
   el.innerHTML = `
     <div class="mini-game">
-      <div class="mini-title">� Kasongo</div>
-      <div class="mini-desc">Reveal gems to multiply your bet. Hit Kasongo and lose it all.</div>
+      <div class="mini-title">� Mines</div>
+      <div class="mini-desc">Reveal gems to multiply your bet. Hit Mines and lose it all.</div>
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
@@ -2671,7 +2671,7 @@ async function mineStart() {
   const stake = parseFloat(document.getElementById('m-stake').value) || 0;
   if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
-  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Kasongo game');
+  await updateBalance(userBalance - stake, 'bet_loss', stake, 'Mines game');
   mineStake = stake; mineRevealed = 0; mineMult = 1; mineActive = true;
   mineGrid = Array(16).fill('hidden');
   const bombs = [...Array(16).keys()].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -2708,7 +2708,7 @@ async function mineCash() {
   mineActive = false;
   const MAX_PAYOUT = 30000; // KSH max single payout
   const win = Math.min(Math.round(mineStake * mineMult), MAX_PAYOUT);
-  await updateBalance(userBalance + win, 'bet_win', win, `Kasongo cashed out at ${mineMult.toFixed(2)}x`);
+  await updateBalance(userBalance + win, 'bet_win', win, `Mines cashed out at ${mineMult.toFixed(2)}x`);
   renderMines();
   document.getElementById('m-msg').innerHTML = `<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
 }
