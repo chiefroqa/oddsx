@@ -1457,7 +1457,7 @@ async function loadSport(id) {
     return;
   }
 
-  renderSports();
+  renderAllSports();
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => loadSport(currentSport), 60 * 1000); // refresh every 60s
 }
@@ -1915,7 +1915,7 @@ async function confirmChallenge() {
     selections = {};
     document.getElementById('betslip').style.display = 'none';
     document.getElementById('slip-cnt').textContent = '0';
-    renderSports();
+    renderAllSports();
 
     // Show share modal with WhatsApp link
     showChallengeShareModal(challenge, bet, stake, msg);
@@ -2254,7 +2254,7 @@ async function placeBet() {
   btn.disabled = false; btn.textContent = 'Place Bet';
   // Clear bet history cache to show new bet
   betHistoryCache = null;
-  renderSports();
+  renderAllSports();
   showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
   // Start watching for result — pass bet ID so we can update the correct bet record
   bets.forEach(b => watchForResult(b.gameId, betId, b.type, bets));
@@ -2390,7 +2390,7 @@ async function doSettle(betId, allSelections, finishedGames) {
     allSelections.forEach(s => placedGameIds.delete(s.gameId));
     betHistoryCache = null;
     transactionCache = null;
-    renderSports();
+    renderAllSports();
     if (document.getElementById('tab-history')?.style.display !== 'none') renderHistory();
     if (document.getElementById('tab-wallet')?.style.display !== 'none') renderWallet();
   } catch(e) {
