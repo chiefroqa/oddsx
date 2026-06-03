@@ -333,11 +333,11 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   </div>
   <div class="tabs">
     <div class="tab active" onclick="showTab('sports')">⚽ Sports</div>
+    <div class="tab" onclick="showTab('p2p')">⚔️ P2P Bet</div>
     <div class="tab" onclick="showTab('crash')">✈️ Pepea</div>
     <div class="tab" onclick="showTab('mines')"><svg viewBox="0 0 240 209" style="width:16px;height:16px;fill:currentColor;display:inline;margin-right:6px" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0.000000,209.000000) scale(0.100000,-0.100000)" fill="currentColor" stroke="none"><path d="M1045 1776 c-162 -24 -203 -35 -280 -74 -131 -65 -359 -292 -422 -420 -48 -98 -20 -191 89 -298 63 -61 147 -124 167 -124 17 0 24 -21 31 -99 4 -42 17 -101 29 -132 18 -48 31 -63 81 -98 50 -35 60 -47 60 -72 0 -16 -3 -29 -7 -29 -8 0 -124 35 -221 65 -79 25 -82 22 -82 -93 0 -182 -13 -215 -124 -305 -47 -39 -56 -59 -33 -74 6 -4 321 -8 699 -8 l688 0 -58 52 c-31 29 -70 59 -87 67 -118 57 -165 76 -188 76 -35 0 -44 18 -15 29 13 5 91 12 173 15 171 8 250 20 294 47 16 10 60 57 98 104 64 80 72 87 126 102 41 12 67 26 88 50 34 39 38 79 10 88 -32 10 -34 36 -5 66 18 19 24 33 19 48 -5 18 -14 21 -61 21 -53 0 -54 0 -54 30 0 25 4 30 25 31 14 1 30 3 35 4 6 1 19 3 30 4 11 0 38 20 60 42 59 61 55 87 -21 158 -218 202 -220 204 -226 249 -5 34 -12 46 -33 57 -15 8 -52 52 -82 97 -71 107 -199 226 -293 273 -90 44 -212 75 -295 74 -36 -1 -132 -11 -215 -23z"/></g></svg>Mines</div>
     <div class="tab" onclick="showTab('wallet')">💳 Wallet</div>
     <div class="tab" onclick="showTab('history')">📋 History</div>
-    <div class="tab" onclick="showTab('p2p')">⚔️ Challenge</div>
   </div>
   <div id="tab-sports" class="content"></div>
   <div id="tab-crash" class="content" style="display:none"></div>
@@ -1080,7 +1080,7 @@ async function showTab(t) {
     showAuthScreen();
     return;
   }
-  const tabs = ['sports','crash','mines','wallet','history','p2p'];
+  const tabs = ['sports','p2p','crash','mines','wallet','history'];
   if (t !== 'p2p' && window._challengesRefreshTimer) {
     clearInterval(window._challengesRefreshTimer);
     window._challengesRefreshTimer = null;
