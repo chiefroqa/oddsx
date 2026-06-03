@@ -294,7 +294,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div class="field"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters"></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:14px;cursor:pointer">
         <input type="checkbox" id="signup-whatsapp" checked style="width:16px;height:16px;accent-color:var(--accent)">
-        ✅ Receive bet alerts on WhatsApp
+        Accept terms and conditions
       </label>
       <button class="auth-btn" onclick="signUp()">Create Account</button>
       <div class="divider" style="display:none">or</div>
@@ -338,9 +338,6 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div class="tab" onclick="showTab('wallet')">💳 Wallet</div>
     <div class="tab" onclick="showTab('history')">📋 History</div>
     <div class="tab" onclick="showTab('p2p')">⚔️ Challenge</div>
-  </div>
-  <div id="sport-bar" style="background:var(--g2);border-bottom:1px solid rgba(255,255,255,0.06);padding:8px 12px;overflow-x:auto;white-space:nowrap">
-    <div style="display:inline-flex;gap:6px" id="sport-chips"></div>
   </div>
   <div id="tab-sports" class="content"></div>
   <div id="tab-crash" class="content" style="display:none"></div>
@@ -1092,7 +1089,6 @@ async function showTab(t) {
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabs[i]===t));
   const hasSlip = Object.keys(selections).length > 0;
   document.getElementById('betslip').style.display = (hasSlip && t==='sports') ? 'flex' : 'none';
-  document.getElementById('sport-bar').style.display = t==='sports' ? 'block' : 'none';
   if (t==='wallet') await renderWallet();
   if (t==='history') await renderHistory();
   if (t==='p2p') {
@@ -1403,26 +1399,40 @@ function generateOdds(homeTeam = '', awayTeam = '', homeScore = null, awayScore 
 
 
 function initSports() {
-  renderSportChips();
-  loadSport(currentSport);
+  loadAllSports();
 }
 
-function renderSportChips() {
-  const chips = document.getElementById('sport-chips');
-  chips.innerHTML = SPORTS.map(s =>
-    `<div class="sport-chip ${s.id===currentSport?'active':''}" data-sport="${s.id}" onclick="switchSport('${s.id}')">${s.label}</div>`
-  ).join('');
-}
+// Load all sports at once and display them grouped
+async function loadAllSports() {
+  const el = document.getElementById('tab-sports');
+  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">
+    <div style="font-size:28px;margin-bottom:8px">⏳</div>
+    <div style="font-weight:600;margin-bottom:4px">Loading all sports</div>
+    <div style="font-size:12px;color:var(--muted)">Fetching live & upcoming games from ESPN...</div>
+  </div>`;
 
-async function switchSport(id) {
-  if (id === currentSport) return;
-  currentSport = id;
-  document.querySelectorAll('.sport-chip').forEach(el => {
-    el.classList.toggle('active', el.dataset.sport === id);
-  });
+  const allGames = {};
+  for (const sport of SPORTS) {
+    const rawEvents = await fetchESPN(sport.leagues, sport.id);
+    const parsed = rawEvents.map(ev => parseESPNEvent(ev, sport)).filter(Boolean);
+    if (parsed.length > 0) {
+      allGames[sport.id] = { sport, games: parsed };
+    }
+  }
+
+  if (Object.keys(allGames).length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">📭</div>
+      <div style="font-weight:600;margin-bottom:6px">No games coming up</div>
+      <div style="font-size:12px">Check back soon!</div>
+    </div>`;
+    return;
+  }
+
+  liveGames = allGames;
+  renderAllSports();
   if (refreshTimer) clearTimeout(refreshTimer);
-  liveGames = [];
-  await loadSport(id);
+  refreshTimer = setTimeout(() => loadAllSports(), 60 * 1000); // refresh every 60s
 }
 
 async function loadSport(id) {
@@ -1453,6 +1463,141 @@ async function loadSport(id) {
 }
 
 // ─── SPORTS RENDER ───
+// Create single game card HTML
+function renderGameCard(g, sport) {
+  const sel = selections[g.id];
+  const hasScore = g.homeScore !== null && g.homeScore !== undefined;
+  const locked = g.isFinal;
+  const isLiveGame = g.isLive;
+
+  let statusBadge = '';
+  if (isLiveGame) {
+    statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;color:#f55;font-size:10px;font-weight:700;letter-spacing:1px">
+      <span style="width:6px;height:6px;background:#f00;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block"></span>LIVE · ${g.statusDetail}
+    </span>`;
+  } else if (locked) {
+    statusBadge = `<span style="font-size:10px;color:var(--muted)">FT · ${g.statusDetail}</span>`;
+  } else {
+    statusBadge = `<span style="font-size:10px;color:var(--accent2)">${g.timeDisplay}</span>`;
+  }
+
+  const seriesLine = g.series
+    ? `<div style="text-align:center;font-size:10px;color:var(--gold);padding:2px 12px 6px;font-weight:600">${g.seriesNote ? g.seriesNote + ' · ' : ''}${g.series}</div>`
+    : '';
+
+  const liveOddsNote = isLiveGame
+    ? `<div style="background:rgba(255,107,53,0.1);border-top:1px solid rgba(255,107,53,0.2);padding:5px 12px;font-size:10px;color:var(--accent2);text-align:center">
+        ⚡ In-play odds — updating based on score & time
+      </div>`
+    : '';
+
+  const lockedNote = locked
+    ? `<div style="background:rgba(0,0,0,0.4);border-top:1px solid rgba(255,255,255,0.06);padding:8px 12px;font-size:11px;color:var(--muted);text-align:center">
+        🔒 Betting closed — match finished
+      </div>`
+    : '';
+
+  const alreadyBet = placedGameIds.has(g.id);
+  const alreadyBetNote = alreadyBet
+    ? `<div style="background:rgba(0,229,160,0.06);border-top:1px solid var(--border);padding:6px 12px;font-size:10px;color:var(--accent);text-align:center">
+        ✓ You have an active bet on this game
+      </div>`
+    : '';
+
+  const canBet = !locked && !alreadyBet;
+  const leagueSlug = sport?.leagues?.[0] || '';
+  const gameDate = g.date ? g.date.slice(0,10).replace(/-/g,'') : '';
+
+  const homeTeam = g.homeTeam?.name || g.homeTeam?.abbreviation || '';
+  const awayTeam = g.awayTeam?.name || g.awayTeam?.abbreviation || '';
+  const oddsClick = (type, team, odds) =>
+    canBet ? `onclick="selectOdd('${g.id}','${type}','${team}','${odds}','${leagueSlug}','${gameDate}','${homeTeam}','${awayTeam}')"` : '';
+
+  return `<div class="game-card" style="${locked?'opacity:0.7':''}">
+    <div class="game-header">
+      <span class="series-badge">${g.competitionName || sport?.name}</span>
+      ${statusBadge}
+    </div>
+    ${seriesLine}
+    <div class="game-body">
+      <div class="team">
+        ${g.awayLogo ? `<img src="${g.awayLogo}" style="width:32px;height:32px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'">` : ''}
+        <div class="team-abbr" style="font-size:20px">${g.awayAbbr}</div>
+        <div class="team-name">${g.awayTeam}</div>
+        ${g.awayRecord ? `<div style="font-size:9px;color:var(--muted)">${g.awayRecord}</div>` : ''}
+      </div>
+      <div class="vs-block">
+        ${hasScore
+          ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;letter-spacing:2px">${g.awayScore}<span style="color:var(--muted);font-size:18px;margin:0 4px">-</span>${g.homeScore}</div>`
+          : `<div class="vs-text" style="font-size:12px">VS</div>`}
+      </div>
+      <div class="team">
+        ${g.homeLogo ? `<img src="${g.homeLogo}" style="width:32px;height:32px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'">` : ''}
+        <div class="team-abbr" style="font-size:20px">${g.homeAbbr}</div>
+        <div class="team-name">${g.homeTeam}</div>
+        ${g.homeRecord ? `<div style="font-size:9px;color:var(--muted)">${g.homeRecord}</div>` : ''}
+      </div>
+    </div>
+    <div class="prob-bar">
+      <div class="prob-home" style="width:${g.awayProb}%"></div>
+      <div class="prob-away" style="width:${g.homeProb}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:0 12px 4px;font-size:10px;color:var(--muted)">
+      <span>${g.awayProb}% ${g.awayAbbr}</span>
+      ${g.isSoccer ? `<span>Draw ${g.drawProb}%</span>` : ''}
+      <span>${g.homeProb}% ${g.homeAbbr}</span>
+    </div>
+    ${liveOddsNote}
+    <div class="odds-row" style="${!canBet?'pointer-events:none;opacity:0.5':''}">
+      <div class="odd-btn ${sel?.type==='away'?'selected':''}" ${oddsClick('away', g.awayTeam+' Win', g.awayDecimal)}>
+        <div class="odd-label">${g.awayAbbr} Win</div>
+        <div class="odd-val">${g.awayDecimal}</div>
+        <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.awayTeam}</div>
+      </div>
+      ${g.isSoccer ? `
+      <div class="odd-btn ${sel?.type==='draw'?'selected':''}" ${oddsClick('draw', g.awayTeam+' vs '+g.homeTeam+' Draw', g.drawDecimal)}>
+        <div class="odd-label">Draw</div>
+        <div class="odd-val">${g.drawDecimal}</div>
+        <div class="odd-team" style="font-size:9px">X</div>
+      </div>` : ''}
+      <div class="odd-btn ${sel?.type==='home'?'selected':''}" ${oddsClick('home', g.homeTeam+' Win', g.homeDecimal)}>
+        <div class="odd-label">${g.homeAbbr} Win</div>
+        <div class="odd-val">${g.homeDecimal}</div>
+        <div class="odd-team" style="font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.homeTeam}</div>
+      </div>
+    </div>
+    ${lockedNote}
+    ${alreadyBetNote}
+  </div>`;
+}
+
+// Render all sports games grouped by sport
+function renderAllSports() {
+  const el = document.getElementById('tab-sports');
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+    <div class="section-label">All Sports</div>
+    <div style="font-size:10px;color:var(--muted);padding:12px 0 8px">🔄 updates every 60s</div>
+  </div>`;
+
+  for (const [sportId, { sport, games }] of Object.entries(liveGames)) {
+    const sorted = [...games].sort((a,b) => {
+      const order = g => g.isLive ? 0 : g.isScheduled ? 1 : 2;
+      return order(a) - order(b);
+    });
+
+    html += `<div style="margin-top:16px">
+      <div class="section-label" style="margin:8px 0 8px">${sport.label} · ${sorted.length} game${sorted.length!==1?'s':''}</div>`;
+
+    sorted.forEach(g => {
+      html += renderGameCard(g, sport);
+    });
+
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
 function renderSports() {
   const el = document.getElementById('tab-sports');
   const sport = SPORTS.find(s => s.id === currentSport);
@@ -1618,7 +1763,7 @@ function selectOdd(gameId, type, label, odds, leagueSlug, gameDate, homeTeam, aw
     slipLabel.textContent = 'Accumulator';
   }
   calcReturn();
-  renderSports();
+  renderAllSports();
 }
 
 function oddsToDecimal(o) {
