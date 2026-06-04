@@ -2488,7 +2488,7 @@ function renderCrash() {
       <div style="padding:12px 14px">
         <div class="action-row" style="margin-bottom:10px">
           <span style="font-size:11px;color:var(--muted)">KSH</span>
-          <input class="crash-input" type="number" id="c-stake" value="200" min="50">
+          <input class="crash-input" type="number" id="c-stake" value="10" min="50">
           <button class="green-btn" id="c-start" onclick="crashStart()">🚀 Launch</button>
           <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">💰 Cash Out</button>
           <span id="c-msg"></span>
@@ -2703,7 +2703,7 @@ async function crashStart() {
       clearInterval(crashInterval);
       crashState = 'crashed';
 
-      m.textContent = 'PEPEAED ' + crashMult.toFixed(2) + 'x';
+      m.textContent = 'CRASH! ' + crashMult.toFixed(2) + 'x';
       m.style.color = '#ff6b35';
       m.style.textShadow = '0 0 40px rgba(255,107,53,0.8)';
       drawCrashCanvas(true);
@@ -2771,7 +2771,7 @@ function renderMines() {
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
-        <input class="crash-input" type="number" id="m-stake" value="300" min="50" ${mineActive?'disabled':''}>
+        <input class="crash-input" type="number" id="m-stake" value="10" min="50" ${mineActive?'disabled':''}>
         <button class="${gameButtonClass}" id="m-start"
           ${gameButtonDisabled}
           onclick="${gameButtonClick}">
