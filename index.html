@@ -353,7 +353,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div class="potential" id="pot-return"></div>
     </div>
     <span style="font-size:11px;color:var(--muted)">KSH</span>
-    <input class="slip-input" type="number" id="stake" value="200" min="50" step="50" oninput="calcReturn()">
+    <input class="slip-input" type="number" id="stake" value="50" step="50" oninput="calcReturn()">
     <button class="place-btn" id="place-btn" onclick="placeBet()">Bet</button>
     <button class="place-btn" id="challenge-btn" onclick="createChallenge()" style="background:var(--gold);color:#000;display:none;gap:5px;align-items:center;font-size:13px;padding:7px 12px">⚔️ Challenge</button>
   </div>
@@ -371,7 +371,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div id="challenge-preview" style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
     <div style="margin-bottom:14px">
       <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">Your Stake (KSH)</label>
-      <input type="number" id="challenge-stake" value="200" min="1" step="50"
+      <input type="number" id="challenge-stake" value="50" step="50"
         style="width:100%;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-size:16px;font-weight:700;padding:10px 14px;outline:none"
         oninput="updateChallengePreview()">
     </div>
@@ -2219,7 +2219,6 @@ async function placeBet() {
     showAuthScreen();
     return;
   }
-  if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
   const btn = document.getElementById('place-btn');
   btn.disabled = true; btn.textContent = 'Placing...';
@@ -2488,7 +2487,7 @@ function renderCrash() {
       <div style="padding:12px 14px">
         <div class="action-row" style="margin-bottom:10px">
           <span style="font-size:11px;color:var(--muted)">KSH</span>
-          <input class="crash-input" type="number" id="c-stake" value="10" min="50">
+          <input class="crash-input" type="number" id="c-stake" value="10">
           <button class="green-btn" id="c-start" onclick="crashStart()">🚀 Launch</button>
           <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">💰 Cash Out</button>
           <span id="c-msg"></span>
@@ -2637,7 +2636,6 @@ async function crashStart() {
     return;
   }
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 0;
-  if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
 
   const startBtn = document.getElementById('c-start');
@@ -2771,7 +2769,7 @@ function renderMines() {
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted)">KSH</span>
-        <input class="crash-input" type="number" id="m-stake" value="10" min="50" ${mineActive?'disabled':''}>
+        <input class="crash-input" type="number" id="m-stake" value="10" ${mineActive?'disabled':''}>
         <button class="${gameButtonClass}" id="m-start"
           ${gameButtonDisabled}
           onclick="${gameButtonClick}">
@@ -2814,7 +2812,6 @@ async function mineStart() {
     return;
   }
   const stake = parseFloat(document.getElementById('m-stake').value) || 0;
-  if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
   await updateBalance(userBalance - stake, 'bet_loss', stake, 'Mines game');
   mineStake = stake; mineRevealed = 0; mineMult = 1; mineActive = true;
@@ -3342,7 +3339,7 @@ function renderDiceCreate() {
           </div>
           <div class="dice-stake-row">
             <span style="font-size:11px;color:var(--muted)">KSH</span>
-            <input id="dice-create-stake" type="number" value="200" min="50" step="50" oninput="updateDicePreview()"
+            <input id="dice-create-stake" type="number" value="50" step="50" oninput="updateDicePreview()"
               style="flex:1;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;padding:9px 12px;outline:none">
           </div>
         </div>
@@ -3388,7 +3385,6 @@ async function createDiceChallenge() {
   if (!currentUser) { showAuthScreen(); return; }
   if (!dicePick) return showToast('Pick Over or Under first');
   const stake = parseFloat(document.getElementById('dice-create-stake').value) || 0;
-  if (stake < 50) return showToast('Minimum stake is KSH 50');
   if (stake > userBalance) return showToast('Insufficient balance');
 
   const btn = document.getElementById('dice-create-btn');
