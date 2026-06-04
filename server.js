@@ -21,8 +21,10 @@ app.get('/api/crash-target', (req, res) => {
     if (r <= INSTANT_CRASH_PROB) {
       target = 1.00;
     } else {
-      const adjR = (r - INSTANT_CRASH_PROB) / (1 - INSTANT_CRASH_PROB);
-      target = (1 - HOUSE_EDGE) / adjR;
+      // Renormalize conditional tail so overall house edge remains HOUSE_EDGE
+      // For r in (INSTANT_CRASH_PROB,1], the correct target is (1-HOUSE_EDGE)/(r - INSTANT_CRASH_PROB)
+      // which implements P(X=1)=INSTANT_CRASH_PROB and P(X>=x)=(1-HOUSE_EDGE)/x for x>1.
+      target = (1 - HOUSE_EDGE) / (r - INSTANT_CRASH_PROB);
       target = Math.max(1.01, Math.min(MAX_TARGET, target));
     }
     const targetRounded = Math.round(target * 100) / 100;

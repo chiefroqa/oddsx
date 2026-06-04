@@ -2669,11 +2669,17 @@ async function crashStart() {
   } catch (e) {
     console.warn('Crash target fetch failed, falling back to local RNG', e);
     // Aviator-style crash distribution — fallback (non-secure)
+    // Use same renormalized instant-crash formula as server to preserve house edge
     const HOUSE_EDGE = 0.06;
+    const INSTANT_CRASH_PROB = 0.01;
     let r = Math.random();
-    let crashTargetCrude = (1 - HOUSE_EDGE) / r;
-    crashTarget = Math.max(1.01, Math.min(1000, crashTargetCrude));
-    crashTarget = +crashTarget.toFixed(2);
+    if (r <= INSTANT_CRASH_PROB) {
+      crashTarget = 1.00;
+    } else {
+      crashTarget = (1 - HOUSE_EDGE) / (r - INSTANT_CRASH_PROB);
+      crashTarget = Math.max(1.01, Math.min(1000, crashTarget));
+      crashTarget = +crashTarget.toFixed(2);
+    }
   }
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
