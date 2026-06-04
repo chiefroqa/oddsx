@@ -2659,16 +2659,22 @@ async function crashStart() {
 
   crashState = 'running';
   crashMult = 1.0;
-  // Aviator-style crash distribution — same formula used by Spribe/Aviator
-  // House edge: 1% of rounds crash at exactly 1.00x (instant)
-  // Other rounds: crash = 99 / (100 * rand) — gives realistic distribution:
-  //   ~35% crash below 1.5x, ~52% below 2x, ~18% above 5x, ~8% above 10x
-  // Generate crash multiplier with 6% house edge
-  // P(multiplier >= x) = (0.94 / x) for x >= 1.01
-  let r = Math.random();
-  let crashTargetCrude = 0.94 / r;
-  crashTarget = Math.max(1.01, Math.min(1000, crashTargetCrude));
-  crashTarget = +crashTarget.toFixed(2);
+  // Obtain crash target from server (secure RNG). Fall back to client RNG if unavailable.
+  try {
+    const resp = await fetch('/api/crash-target', { cache: 'no-store' });
+    if (!resp.ok) throw new Error('server error');
+    const body = await resp.json();
+    crashTarget = Number(body.crashTarget);
+    if (!crashTarget || Number.isNaN(crashTarget)) throw new Error('invalid target');
+  } catch (e) {
+    console.warn('Crash target fetch failed, falling back to local RNG', e);
+    // Aviator-style crash distribution — fallback (non-secure)
+    const HOUSE_EDGE = 0.06;
+    let r = Math.random();
+    let crashTargetCrude = (1 - HOUSE_EDGE) / r;
+    crashTarget = Math.max(1.01, Math.min(1000, crashTargetCrude));
+    crashTarget = +crashTarget.toFixed(2);
+  }
 
   if (startBtn) { startBtn.style.display = 'none'; startBtn.disabled = false; }
   if (cashBtn) { cashBtn.style.display = 'inline-block'; }
