@@ -232,6 +232,30 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .bet-status.lost{background:rgba(255,107,53,0.15);color:var(--accent2)}
 .bet-status.pending{background:rgba(255,201,71,0.15);color:var(--gold)}
 
+/* ── USDC WALLET ── */
+.usdc-card{background:linear-gradient(135deg,#0d1f35 0%,#0a1628 100%);border:1px solid rgba(41,121,255,0.3);border-radius:12px;padding:20px;margin-bottom:12px;position:relative;overflow:hidden}
+.usdc-card::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:rgba(41,121,255,0.07);border-radius:50%;pointer-events:none}
+.usdc-label{font-size:11px;color:rgba(41,121,255,0.8);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.usdc-balance{font-family:'Barlow Condensed',sans-serif;font-size:42px;font-weight:900;color:#2979ff;margin:6px 0;letter-spacing:-1px}
+.usdc-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:16px}
+.usdc-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.usdc-btn{border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;transition:opacity 0.2s}
+.usdc-btn:hover{opacity:0.85}
+.usdc-btn.deposit{background:#2979ff;color:#fff}
+.usdc-btn.withdraw{background:transparent;border:1px solid rgba(41,121,255,0.5);color:#2979ff}
+.usdc-addr-box{background:rgba(0,0,0,0.3);border:1px solid rgba(41,121,255,0.2);border-radius:8px;padding:10px 12px;font-size:11px;font-family:monospace;color:rgba(255,255,255,0.6);word-break:break-all;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
+.usdc-addr-box:hover{border-color:rgba(41,121,255,0.5)}
+.usdc-addr-copy{font-size:10px;color:#2979ff;font-weight:700;white-space:nowrap;font-family:'Barlow',sans-serif}
+.usdc-status-dot{width:7px;height:7px;border-radius:50%;background:#2979ff;display:inline-block;animation:pulse 2s infinite;margin-right:5px}
+.usdc-tx-item{display:flex;align-items:flex-start;justify-content:space-between;padding:12px 14px;background:rgba(41,121,255,0.04);border-radius:10px;margin-bottom:8px;border:1px solid rgba(41,121,255,0.1)}
+.usdc-tx-amount{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700}
+.usdc-tx-amount.credit{color:#2979ff}
+.usdc-tx-amount.debit{color:var(--accent2)}
+.wallet-tabs{display:flex;background:var(--g3);border-radius:8px;padding:3px;margin-bottom:16px}
+.wallet-tab{flex:1;text-align:center;padding:8px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:all 0.2s;letter-spacing:0.5px;font-family:'Barlow Condensed',sans-serif;font-size:14px}
+.wallet-tab.active{background:var(--g2);color:var(--accent);border:1px solid var(--border)}
+.wallet-tab.active.usdc-tab{color:#2979ff;border-color:rgba(41,121,255,0.3)}
+
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal{background:var(--g2);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:360px}
@@ -479,6 +503,32 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     <div id="dr-picks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px"></div>
     <button id="dr-play-again-btn" onclick="playDiceAgain()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">🎲 Play Again</button>
     <button onclick="closeModal('dice-result-modal')" style="width:100%;background:var(--g3);border:none;border-radius:8px;color:var(--muted);padding:10px;cursor:pointer;font-size:13px">Close</button>
+  </div>
+</div>
+
+<!-- USDC DEPOSIT MODAL -->
+<div class="modal-overlay" id="usdc-deposit-modal" style="display:none" onclick="if(event.target.id==='usdc-deposit-modal')closeModal('usdc-deposit-modal')">
+  <div class="modal" style="max-width:380px">
+    <button class="modal-close" onclick="closeModal('usdc-deposit-modal')">✕</button>
+    <div class="modal-title" style="color:#2979ff">⬇️ Deposit USDC</div>
+    <div style="background:rgba(41,121,255,0.06);border:1px solid rgba(41,121,255,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;color:var(--muted);line-height:1.7">Send <b style="color:#2979ff">USDC only</b> on the <b style="color:#fff">Base network</b> to your address below. Other tokens or networks will be lost.</div>
+    <div style="text-align:center;margin-bottom:14px"><div id="usdc-qr-container" style="display:inline-block;background:#fff;padding:12px;border-radius:10px;margin-bottom:10px"></div><div style="font-size:10px;color:var(--muted)">Scan with any crypto wallet</div></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Your Base Address</div>
+    <div class="usdc-addr-box" onclick="copyUsdcAddress()"><span id="usdc-addr-display" style="font-size:11px">Loading...</span><span class="usdc-addr-copy">COPY</span></div>
+    <div style="margin-top:14px;font-size:11px;color:var(--muted);text-align:center">⚡ Deposits detected automatically · Usually confirms in ~10 seconds on Base</div>
+  </div>
+</div>
+
+<!-- USDC WITHDRAW MODAL -->
+<div class="modal-overlay" id="usdc-withdraw-modal" style="display:none" onclick="if(event.target.id==='usdc-withdraw-modal')closeModal('usdc-withdraw-modal')">
+  <div class="modal" style="max-width:380px">
+    <button class="modal-close" onclick="closeModal('usdc-withdraw-modal')">✕</button>
+    <div class="modal-title" style="color:#2979ff">⬆️ Withdraw USDC</div>
+    <div class="field"><label>Recipient Base Address</label><input type="text" id="usdc-withdraw-addr" placeholder="0x..." style="font-family:monospace;font-size:12px;letter-spacing:0.5px"></div>
+    <div class="field"><label>Amount (USDC)</label><input type="number" id="usdc-withdraw-amount" placeholder="Min 1 USDC" min="1" step="0.01"></div>
+    <div id="usdc-withdraw-balance-note" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
+    <div style="background:rgba(255,201,71,0.07);border:1px solid rgba(255,201,71,0.2);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6">⚠️ Double-check the address. USDC sent to a wrong address cannot be recovered. Withdrawals go directly on-chain to Base network.</div>
+    <button class="auth-btn" id="usdc-withdraw-btn" onclick="submitUsdcWithdrawal()" style="background:#2979ff;color:#fff">Withdraw USDC</button>
   </div>
 </div>
 
@@ -3005,31 +3055,59 @@ async function checkAndSettlePendingBets() {
 }
 
 async function renderWallet() {
-  document.getElementById('tab-wallet').innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
+  const walletTab = document.getElementById('tab-wallet');
+  walletTab.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
   await refreshBalance();
-  const el = document.getElementById('tab-wallet');
-  el.innerHTML = `
-    <div class="wallet-card">
-      <div class="wallet-label">Available Balance</div>
-      <div class="wallet-balance">KSH ${userBalance.toLocaleString()}</div>
-      <div class="wallet-actions">
-        <button class="wallet-btn deposit" onclick="openModal('deposit-modal')">+ Deposit</button>
-        <button class="wallet-btn withdraw" onclick="openWithdrawModal()">Withdraw</button>
+
+  // Render shell with both tabs
+  walletTab.innerHTML = `
+    <div class="wallet-tabs">
+      <div class="wallet-tab active" id="wtab-kes" onclick="switchWalletTab('kes')">🇰🇪 KES Wallet</div>
+      <div class="wallet-tab usdc-tab" id="wtab-usdc" onclick="switchWalletTab('usdc')">💎 USDC Wallet</div>
+    </div>
+    <div id="wallet-kes-panel">
+      <div class="wallet-card">
+        <div class="wallet-label">Available Balance</div>
+        <div class="wallet-balance">KSH \${userBalance.toLocaleString()}</div>
+        <div class="wallet-actions">
+          <button class="wallet-btn deposit" onclick="openModal('deposit-modal')">+ Deposit</button>
+          <button class="wallet-btn withdraw" onclick="openWithdrawModal()">Withdraw</button>
+        </div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="section-label" style="margin-bottom:0">Transaction History</div>
+        <button onclick="transactionCache=null;renderWallet()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
+      </div>
+      <div id="tx-summary"></div>
+      <div id="tx-filter" style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+        <button class="tx-filter-btn active" onclick="filterTx('all',this)">All</button>
+        <button class="tx-filter-btn" onclick="filterTx('deposit',this)">Deposits</button>
+        <button class="tx-filter-btn" onclick="filterTx('withdrawal',this)">Withdrawals</button>
+        <button class="tx-filter-btn" onclick="filterTx('bet_win',this)">Wins</button>
+        <button class="tx-filter-btn" onclick="filterTx('bet_loss',this)">Bets</button>
+      </div>
+      <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="section-label" style="margin-bottom:0">Transaction History</div>
-      <button onclick="transactionCache=null;renderWallet()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
-    </div>
-    <div id="tx-summary"></div>
-    <div id="tx-filter" style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
-      <button class="tx-filter-btn active" onclick="filterTx('all',this)">All</button>
-      <button class="tx-filter-btn" onclick="filterTx('deposit',this)">Deposits</button>
-      <button class="tx-filter-btn" onclick="filterTx('withdrawal',this)">Withdrawals</button>
-      <button class="tx-filter-btn" onclick="filterTx('bet_win',this)">Wins</button>
-      <button class="tx-filter-btn" onclick="filterTx('bet_loss',this)">Bets</button>
-    </div>
-    <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
+    <div id="wallet-usdc-panel" style="display:none">
+      <div class="usdc-card">
+        <div class="usdc-label"><span class="usdc-status-dot"></span> USDC · Base Network</div>
+        <div class="usdc-balance" id="usdc-bal-display">${usdcBalance.toFixed(2)}</div>
+        <div class="usdc-sub">≈ KSH ${(usdcBalance * usdcKesRate).toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+        <div class="usdc-actions">
+          <button class="usdc-btn deposit" onclick="openUsdcDepositModal()">⬇️ Deposit</button>
+          <button class="usdc-btn withdraw" onclick="openUsdcWithdrawModal()">⬆️ Withdraw</button>
+        </div>
+        <div class="usdc-addr-box" onclick="copyUsdcAddress()" style="margin-top:14px">
+          <span style="font-size:11px;color:rgba(255,255,255,0.4)">${userUsdcAddress ? userUsdcAddress.slice(0,10)+'...'+userUsdcAddress.slice(-8) : 'Generating...'}</span>
+          <span class="usdc-addr-copy">COPY ADDRESS</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="section-label" style="margin-bottom:0">USDC Transactions</div>
+        <button onclick="loadUsdcTransactions()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
+      </div>
+      <div id="usdc-tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>
+    </div>`;
 
   if (!document.getElementById('tx-filter-style')) {
     const s = document.createElement('style');
@@ -3164,6 +3242,314 @@ function filterTx(type, btn) {
   const filtered = type === 'all' ? all : all.filter(t => t.type === type);
   renderTxList(filtered);
 }
+
+// ─── USDC WALLET ───
+// State
+let usdcBalance = 0;
+let userUsdcAddress = null;
+let usdcKesRate = 129; // approx KES per USDC, update from API later
+let usdcPollInterval = null;
+let usdcTxCache = [];
+
+// Base network config
+const BASE_RPC = 'https://mainnet.base.org';
+const USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // USDC on Base
+const USDC_DECIMALS = 6;
+
+// Wallet tab switcher
+function switchWalletTab(tab) {
+  const kesPanel = document.getElementById('wallet-kes-panel');
+  const usdcPanel = document.getElementById('wallet-usdc-panel');
+  const kesTab = document.getElementById('wtab-kes');
+  const usdcTab = document.getElementById('wtab-usdc');
+  if (!kesPanel || !usdcPanel) return;
+  if (tab === 'usdc') {
+    kesPanel.style.display = 'none';
+    usdcPanel.style.display = 'block';
+    kesTab.classList.remove('active');
+    usdcTab.classList.add('active');
+    // Load USDC data
+    initUsdcWallet();
+  } else {
+    usdcPanel.style.display = 'none';
+    kesPanel.style.display = 'block';
+    usdcTab.classList.remove('active');
+    kesTab.classList.add('active');
+    if (usdcPollInterval) { clearInterval(usdcPollInterval); usdcPollInterval = null; }
+  }
+}
+
+// Generate deterministic wallet address from user ID
+// NOTE: In production replace with proper HD wallet via ethers.js CDN
+function generateUsdcAddress(userId) {
+  // Deterministic address derived from userId hash for demo
+  // Replace with: ethers.HDNodeWallet.fromMnemonic(masterMnemonic).derivePath("m/44'/60'/0'/0/"+index)
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  // This produces a placeholder — swap for real HD wallet in production
+  return '0x' + hex.repeat(5).slice(0, 40);
+}
+
+async function initUsdcWallet() {
+  if (!currentUser) return;
+
+  // Get or create user's USDC address from Supabase
+  try {
+    const { data: walletRow } = await sb.from('crypto_wallets')
+      .select('deposit_address, usdc_balance')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
+    if (walletRow) {
+      userUsdcAddress = walletRow.deposit_address;
+      usdcBalance = walletRow.usdc_balance || 0;
+    } else {
+      // Create wallet record
+      const addr = generateUsdcAddress(currentUser.id);
+      userUsdcAddress = addr;
+      await sb.from('crypto_wallets').insert({
+        user_id: currentUser.id,
+        deposit_address: addr,
+        usdc_balance: 0,
+        network: 'base'
+      });
+    }
+  } catch(e) {
+    console.warn('crypto_wallets table not set up yet:', e.message);
+    // Fallback: generate address without DB for now
+    userUsdcAddress = generateUsdcAddress(currentUser.id);
+  }
+
+  updateUsdcDisplay();
+  await loadUsdcTransactions();
+
+  // Poll for incoming deposits every 15s
+  if (usdcPollInterval) clearInterval(usdcPollInterval);
+  usdcPollInterval = setInterval(checkUsdcDeposits, 15000);
+  checkUsdcDeposits(); // immediate first check
+}
+
+function updateUsdcDisplay() {
+  const balEl = document.getElementById('usdc-bal-display');
+  if (balEl) balEl.textContent = usdcBalance.toFixed(2);
+  // Also update the sub-KES equivalent
+  const panel = document.getElementById('wallet-usdc-panel');
+  if (panel) {
+    const sub = panel.querySelector('.usdc-sub');
+    if (sub) sub.textContent = '≈ KSH ' + (usdcBalance * usdcKesRate).toLocaleString(undefined, {maximumFractionDigits:0});
+  }
+}
+
+// Check Base RPC for incoming USDC transfers to user's address
+async function checkUsdcDeposits() {
+  if (!userUsdcAddress) return;
+  try {
+    // ERC-20 Transfer event topic: Transfer(address,address,uint256)
+    const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+    // Pad address to 32 bytes
+    const paddedAddr = '0x000000000000000000000000' + userUsdcAddress.slice(2).toLowerCase();
+
+    const body = {
+      jsonrpc: '2.0', id: 1,
+      method: 'eth_getLogs',
+      params: [{
+        address: USDC_CONTRACT,
+        topics: [transferTopic, null, paddedAddr],
+        fromBlock: 'latest'
+      }]
+    };
+
+    const res = await fetch(BASE_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const logs = data.result || [];
+
+    for (const log of logs) {
+      const amount = parseInt(log.data, 16) / Math.pow(10, USDC_DECIMALS);
+      const txHash = log.transactionHash;
+
+      // Check if already recorded
+      const { data: existing } = await sb.from('crypto_transactions')
+        .select('id').eq('tx_hash', txHash).maybeSingle();
+      if (existing) continue;
+
+      // New deposit — credit user
+      usdcBalance += amount;
+      await sb.from('crypto_wallets')
+        .update({ usdc_balance: usdcBalance })
+        .eq('user_id', currentUser.id);
+
+      await sb.from('crypto_transactions').insert({
+        user_id: currentUser.id,
+        type: 'usdc_deposit',
+        amount,
+        tx_hash: txHash,
+        status: 'confirmed',
+        network: 'base'
+      });
+
+      showToast('💎 USDC deposit confirmed! +' + amount.toFixed(2) + ' USDC');
+      updateUsdcDisplay();
+      loadUsdcTransactions();
+    }
+  } catch(e) {
+    console.warn('USDC deposit check failed:', e.message);
+  }
+}
+
+async function loadUsdcTransactions() {
+  const listEl = document.getElementById('usdc-tx-list');
+  if (!listEl || !currentUser) return;
+
+  try {
+    const { data: txs } = await sb.from('crypto_transactions')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    usdcTxCache = txs || [];
+
+    if (!usdcTxCache.length) {
+      listEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
+        <div style="font-size:28px;margin-bottom:8px">💎</div>
+        No USDC transactions yet.<br>
+        <span style="font-size:12px">Deposit USDC to get started.</span>
+      </div>`;
+      return;
+    }
+
+    const typeIcon = { usdc_deposit:'⬇️', usdc_withdrawal:'⬆️', usdc_bet:'🎲', usdc_win:'🏆', usdc_transfer:'↔️' };
+    const typeLabel = { usdc_deposit:'USDC Deposit', usdc_withdrawal:'USDC Withdrawal', usdc_bet:'Bet (USDC)', usdc_win:'Win (USDC)', usdc_transfer:'Transfer' };
+
+    listEl.innerHTML = usdcTxCache.map(tx => {
+      const isCredit = ['usdc_deposit','usdc_win'].includes(tx.type);
+      const icon = typeIcon[tx.type] || '•';
+      const label = typeLabel[tx.type] || tx.type;
+      const date = new Date(tx.created_at).toLocaleDateString('en-KE', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+      const shortHash = tx.tx_hash ? tx.tx_hash.slice(0,10)+'...'+tx.tx_hash.slice(-6) : '';
+
+      return `<div class="usdc-tx-item">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${date}</div>
+          ${shortHash ? `<div style="font-size:10px;color:rgba(41,121,255,0.6);font-family:monospace;margin-top:3px">${shortHash}</div>` : ''}
+          <span style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:2px 7px;border-radius:20px;margin-top:4px;display:inline-block;background:rgba(0,229,160,0.12);color:var(--accent);border:1px solid rgba(0,229,160,0.25)">${tx.status || 'confirmed'}</span>
+        </div>
+        <div style="text-align:right;min-width:80px">
+          <div class="usdc-tx-amount ${isCredit?'credit':'debit'}">${isCredit?'+':'-'}${parseFloat(tx.amount).toFixed(2)}</div>
+          <div style="font-size:10px;color:var(--muted)">USDC</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">
+      Could not load transactions.<br><span style="font-size:11px">Run the SQL setup first.</span>
+    </div>`;
+  }
+}
+
+function openUsdcDepositModal() {
+  if (!userUsdcAddress) return showToast('Wallet not ready yet');
+  document.getElementById('usdc-addr-display').textContent = userUsdcAddress;
+
+  // Generate QR code using a free API (no key needed)
+  const qrEl = document.getElementById('usdc-qr-container');
+  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(userUsdcAddress);
+  qrEl.innerHTML = `<img src="${qrUrl}" style="width:140px;height:140px;display:block" alt="QR Code">`;
+
+  openModal('usdc-deposit-modal');
+}
+
+function openUsdcWithdrawModal() {
+  document.getElementById('usdc-withdraw-balance-note').textContent = 'Available: ' + usdcBalance.toFixed(2) + ' USDC';
+  openModal('usdc-withdraw-modal');
+}
+
+function copyUsdcAddress() {
+  if (!userUsdcAddress) return;
+  navigator.clipboard.writeText(userUsdcAddress).then(() => {
+    showToast('✅ Address copied!');
+  }).catch(() => {
+    // Fallback
+    const el = document.createElement('textarea');
+    el.value = userUsdcAddress;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast('✅ Address copied!');
+  });
+}
+
+async function submitUsdcWithdrawal() {
+  const addr = document.getElementById('usdc-withdraw-addr').value.trim();
+  const amount = parseFloat(document.getElementById('usdc-withdraw-amount').value);
+
+  if (!addr || !addr.startsWith('0x') || addr.length !== 42) return showToast('Enter a valid Base address (0x...)');
+  if (!amount || amount < 1) return showToast('Minimum withdrawal is 1 USDC');
+  if (amount > usdcBalance) return showToast('Insufficient USDC balance');
+
+  const btn = document.getElementById('usdc-withdraw-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>Submitting...';
+
+  try {
+    // Debit balance
+    usdcBalance -= amount;
+    await sb.from('crypto_wallets')
+      .update({ usdc_balance: usdcBalance })
+      .eq('user_id', currentUser.id);
+
+    // Log transaction
+    await sb.from('crypto_transactions').insert({
+      user_id: currentUser.id,
+      type: 'usdc_withdrawal',
+      amount,
+      to_address: addr,
+      status: 'pending',
+      network: 'base'
+    });
+
+    // Notify admin (reuse WhatsApp alert system)
+    const adminMsg = [
+      '💎 *USDC Withdrawal Request*',
+      '',
+      '👤 User: ' + currentUser.email,
+      '📤 Send to: ' + addr,
+      '💰 Amount: ' + amount.toFixed(2) + ' USDC',
+      '🌐 Network: Base',
+      '',
+      'Send from platform USDC wallet then mark confirmed.'
+    ].join('\n');
+    fetch(WA_URL + '/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: ADMIN_PHONE, message: adminMsg })
+    }).catch(e => console.log('Admin WA notify failed:', e.message));
+
+    closeModal('usdc-withdraw-modal');
+    updateUsdcDisplay();
+    loadUsdcTransactions();
+    showToast('✅ Withdrawal submitted! Will be sent within 30 minutes.');
+  } catch(e) {
+    usdcBalance += amount; // rollback
+    showToast('Error submitting withdrawal. Please try again.');
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Withdraw USDC';
+}
+
 
 // ─── BET HISTORY ───
 async function renderHistory() {
