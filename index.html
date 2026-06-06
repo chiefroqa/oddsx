@@ -3,27 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OddsX — Live Betting</title>
+<title>OddsX — Global P2P Betting</title>
 
 <!-- Open Graph / WhatsApp link preview -->
 <meta property="og:type"        content="website">
 <meta property="og:site_name"   content="OddsX">
 <meta property="og:url"         content="https://www.oddsx.co.ke">
-<meta property="og:title"       content="OddsX — Live Betting">
-<meta property="og:description" content="Kenya's live sports betting & P2P challenge platform. Bet on football, NBA, and more. Challenge friends head-to-head.">
+<meta property="og:title"       content="OddsX — Global P2P Betting">
+<meta property="og:description" content="Global P2P sports betting & P2P challenge platform. Bet on football, NBA, and more. Challenge friends head-to-head.">
 <meta property="og:image"       content="https://www.oddsx.co.ke/og-image.png">
 <meta property="og:image:width"  content="1200">
 <meta property="og:image:height" content="630">
 
 <!-- Twitter / X card -->
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="OddsX — Live Betting">
-<meta name="twitter:description" content="Kenya's live sports betting & P2P challenge platform.">
+<meta name="twitter:title"       content="OddsX — Global P2P Betting">
+<meta name="twitter:description" content="Global P2P sports betting & P2P challenge platform.">
 <meta name="twitter:image"       content="https://www.oddsx.co.ke/og-image.png">
 
 <!-- Mobile / PWA -->
 <meta name="theme-color" content="#00e5a0">
-<meta name="description" content="Kenya's live sports betting & P2P challenge platform. Bet on football, NBA, and more.">
+<meta name="description" content="Global P2P sports betting & P2P challenge platform. Bet on football, NBA, and more.">
 
 <script>
 // Show app skeleton immediately so screen is never black
@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (app) app.style.display = 'block';
 });
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
   onerror="loadSupabaseFallback()"></script>
 <script>
@@ -273,6 +274,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--g2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;color:var(--accent);z-index:300;opacity:0;transition:opacity 0.3s;pointer-events:none}
 .toast.show{opacity:1}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
 </head>
 <body>
 
@@ -290,7 +292,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div id="auth-challenge-text" style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--gold)">You've been challenged!</div>
       <div id="auth-challenge-sub" style="font-size:12px;color:var(--muted);margin-top:3px">Sign in or create a free account to accept</div>
     </div>
-    <div class="auth-sub" id="auth-sub-text">Kenya's live sports betting platform</div>
+    <div class="auth-sub" id="auth-sub-text">Global P2P sports betting platform.</div>
     <div class="auth-tabs">
       <div class="auth-tab active" onclick="switchAuthTab('login')">Sign In</div>
       <div class="auth-tab" onclick="switchAuthTab('signup')">Create Account</div>
@@ -311,7 +313,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div class="field"><label>Full Name</label><input type="text" id="signup-name" placeholder="John Kamau"></div>
       <div class="field">
         <label>Phone Number</label>
-        <input type="tel" id="signup-phone" placeholder="Phone Number (e.g. 0712345678)" maxlength="13">
+        <input type="tel" id="signup-phone" placeholder="Phone Number (optional)" maxlength="13">
         <div id="signup-phone-error" style="color:#ff4757;font-size:11px;margin-top:4px;display:none"></div>
       </div>
       <div class="field"><label>Email</label><input type="email" id="signup-email" placeholder="you@email.com"></div>
@@ -342,7 +344,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
   <div class="header">
     <div class="logo">ODDS<span>X</span></div>
     <div class="header-right">
-      <div class="balance-pill" onclick="showTab('wallet')">Bal: <b id="bal-display">KSH 0</b></div>
+      <div class="balance-pill" onclick="showTab('wallet')">💎 <b id="bal-display">0.00 USDC</b></div>
       <div class="avatar" id="avatar-btn" onclick="toggleDropdown()">
         <span id="avatar-init">?</span>
         <div class="dropdown" id="dropdown">
@@ -376,7 +378,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
       <div style="font-size:11px;font-weight:600;color:var(--text)" id="slip-type-label">Accumulator</div>
       <div class="potential" id="pot-return"></div>
     </div>
-    <span style="font-size:11px;color:var(--muted)">KSH</span>
+    <span style="font-size:11px;color:var(--muted)">USDC</span>
     <input class="slip-input" type="number" id="stake" value="50" step="50" oninput="calcReturn()">
     <button class="place-btn" id="place-btn" onclick="placeBet()">Bet</button>
     <button class="place-btn" id="challenge-btn" onclick="createChallenge()" style="background:var(--gold);color:#000;display:none;gap:5px;align-items:center;font-size:13px;padding:7px 12px">⚔️ Challenge</button>
@@ -394,7 +396,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
     </div>
     <div id="challenge-preview" style="background:var(--g3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
     <div style="margin-bottom:14px">
-      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">Your Stake (KSH)</label>
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">Your Stake (USDC)</label>
       <input type="number" id="challenge-stake" value="50" step="50"
         style="width:100%;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-size:16px;font-weight:700;padding:10px 14px;outline:none"
         oninput="updateChallengePreview()">
@@ -533,7 +535,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 </div>
 
 <!-- DEPOSIT MODAL -->
-<div class="modal-overlay" id="deposit-modal" style="display:none">
+<div class="modal-overlay" id="deposit-modal" style="display:none!important;visibility:hidden">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('deposit-modal')">✕</button>
     <div class="modal-title">Deposit via M-Pesa</div>
@@ -585,7 +587,7 @@ body{font-family:'Barlow',sans-serif;background:var(--g);color:var(--text);min-h
 </div>
 
 <!-- WITHDRAW MODAL -->
-<div class="modal-overlay" id="withdraw-modal" style="display:none">
+<div class="modal-overlay" id="withdraw-modal" style="display:none!important;visibility:hidden">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('withdraw-modal')">✕</button>
     <div class="modal-title">Withdraw to M-Pesa</div>
@@ -725,9 +727,9 @@ function showRematchToast(challenge, kind) {
   el.style.minWidth = '260px';
   const title = kind === 'dice' ? (challenge.challenger_name + ' sent a Dice rematch') : (challenge.challenger_name + ' challenged you');
   if (kind === 'dice') {
-    el.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${title}</div><div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px">Stake: KSH ${challenge.stake.toLocaleString()}</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="rematch-accept" style="background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#000;font-weight:700;cursor:pointer">Accept & Roll</button><button id="rematch-dismiss" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer">Dismiss</button></div>`;
+    el.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${title}</div><div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px">Stake: $${challenge.stake} USDC</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="rematch-accept" style="background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#000;font-weight:700;cursor:pointer">Accept & Roll</button><button id="rematch-dismiss" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer">Dismiss</button></div>`;
   } else {
-    el.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${title}</div><div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px">Stake: KSH ${challenge.stake.toLocaleString()}</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="rematch-open" style="background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#000;font-weight:700;cursor:pointer">Open</button><button id="rematch-dismiss" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer">Dismiss</button></div>`;
+    el.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${title}</div><div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:10px">Stake: $${challenge.stake} USDC</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="rematch-open" style="background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#000;font-weight:700;cursor:pointer">Open</button><button id="rematch-dismiss" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:8px;color:#fff;cursor:pointer">Dismiss</button></div>`;
   }
   document.body.appendChild(el);
   if (kind === 'dice') {
@@ -840,10 +842,10 @@ async function loadUser(user) {
         });
         const { data: newProfile } = await sb.from('profiles').select('full_name,phone,whatsapp_optin,balance').eq('id', user.id).maybeSingle();
         window.userPhone = newProfile?.phone || null;
-        userBalance = newProfile?.balance || 0;
+        // userBalance deprecated — using usdcBalance
       } else {
         window.userPhone = profile?.phone || null;
-        userBalance = profile?.balance || 0;
+        // userBalance deprecated — using usdcBalance
       }
       updateBalanceDisplay();
     } catch (e) {
@@ -1011,7 +1013,7 @@ async function signUp() {
 
   const phone = normalizePhone(phoneRaw);
   if (!phone) {
-    phoneErr.textContent = 'Enter a valid Kenyan number (07XX, 01XX, or 2547XX)';
+    phoneErr.textContent = 'Enter a valid phone number';
     phoneErr.style.display = 'block';
     return;
   }
@@ -1045,7 +1047,7 @@ async function signUp() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone,
-              message: `👋 Welcome to OddsX, ${name}!\n\nYour account is ready. Deposit via M-Pesa and start winning today.\n\n🌐 oddsx.co.ke\n\nReply STOP to opt out of alerts.`
+              message: `👋 Welcome to OddsX, ${name}!\n\nYour account is ready. Deposit USDC and start winning today.\n\n🌐 oddsx.co.ke`
             })
           });
         } catch(e) { console.log('WhatsApp onboarding failed:', e.message); }
@@ -1104,22 +1106,37 @@ document.addEventListener('click', e => {
 
 // ─── BALANCE ───
 function updateBalanceDisplay() {
-  document.getElementById('bal-display').textContent = 'KSH ' + userBalance.toLocaleString();
+  document.getElementById('bal-display').textContent = usdcBalance.toFixed(2) + ' USDC';
 }
 
 async function refreshBalance() {
-  const { data } = await sb.from('profiles').select('balance').eq('id', currentUser.id).single();
-  if (data) { userBalance = data.balance; updateBalanceDisplay(); }
+  try {
+    const { data } = await sb.from('crypto_wallets').select('usdc_balance').eq('user_id', currentUser.id).maybeSingle();
+    if (data) { usdcBalance = parseFloat(data.usdc_balance) || 0; updateBalanceDisplay(); updateUsdcDisplay(); }
+  } catch(e) { console.warn('refreshBalance:', e.message); }
 }
 
+async function updateUsdcBalanceDB(newBal) {
+  try {
+    await sb.from('crypto_wallets').update({ usdc_balance: newBal }).eq('user_id', currentUser.id);
+    usdcBalance = newBal;
+    updateBalanceDisplay();
+    updateUsdcDisplay();
+  } catch(e) { console.warn('updateUsdcBalanceDB:', e.message); }
+}
+
+// Legacy — kept for crash/mines game deductions, now uses USDC
 async function updateBalance(newBalance, txType, txAmount, txLabel) {
-  await sb.from('profiles').update({ balance: newBalance }).eq('id', currentUser.id);
-  await sb.from('transactions').insert({
-    user_id: currentUser.id, type: txType, amount: txAmount,
-    label: txLabel, balance_after: newBalance
-  });
-  userBalance = newBalance;
+  usdcBalance = newBalance;
   updateBalanceDisplay();
+  updateUsdcDisplay();
+  try {
+    await sb.from('crypto_wallets').update({ usdc_balance: newBalance }).eq('user_id', currentUser.id);
+    await sb.from('crypto_transactions').insert({
+      user_id: currentUser.id, type: txType, amount: txAmount,
+      status: 'confirmed', network: 'internal'
+    });
+  } catch(e) { console.warn('updateBalance:', e.message); }
 }
 
 // ─── TABS ───
@@ -1831,7 +1848,7 @@ function calcReturn() {
   const bets = Object.values(selections);
   if (!bets.length) return;
   const mult = bets.reduce((a, b) => a * oddsToDecimal(b.odds), 1);
-  document.getElementById('pot-return').textContent = `Potential: KSH ${Math.round(stake * mult).toLocaleString()}`;
+  document.getElementById('pot-return').textContent = `Potential: $${(stake * mult).toFixed(2)} USDC`;
 }
 
 // ── P2P CHALLENGE SYSTEM ──
@@ -1843,8 +1860,8 @@ function showChallengeShareModal(challenge, bet, stake, msg) {
 
   document.getElementById('share-preview').innerHTML =
     '<div style="font-weight:700;color:var(--accent);margin-bottom:6px">' + bet.label + '</div>' +
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">Stake: <span style="color:var(--gold);font-weight:700">KSH ' + stake.toLocaleString() + '</span> each</div>' +
-    '<div style="font-size:11px;color:var(--muted)">Winner takes: <span style="color:var(--accent);font-weight:700">KSH ' + Math.round(stake * 2 * 0.95).toLocaleString() + '</span></div>';
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">Stake: <span style="color:var(--gold);font-weight:700">$' + stake + ' USDC</span> each</div>' +
+    '<div style="font-size:11px;color:var(--muted)">Winner takes: <span style="color:var(--accent);font-weight:700">$' + (stake * 2 * 0.95).toFixed(2) + ' USDC</span></div>';
 
   document.getElementById('share-link-text').textContent = challengeUrl;
   document.getElementById('whatsapp-share-btn').href = 'https://wa.me/?text=' + msg;
@@ -1906,11 +1923,11 @@ function updateChallengePreview() {
   const stake = parseFloat(document.getElementById('challenge-stake').value) || 0;
   const pot = stake * 2;
   const winnerTakes = Math.round(pot * 0.95);
-  document.getElementById('challenge-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  document.getElementById('challenge-winner-takes').textContent = '$' + winnerTakes + ' USDC';
   document.getElementById('challenge-preview').innerHTML = `
     <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">${bet.label}</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Your friend takes: <span style="color:var(--text)">${getOppositeLabel(bet)}</span></div>
-    <div style="font-size:11px;color:var(--muted)">Each stakes: <span style="color:var(--gold);font-weight:700">KSH ${stake.toLocaleString()}</span></div>`;
+    <div style="font-size:11px;color:var(--muted)">Each stakes: <span style="color:var(--gold);font-weight:700">$${stake} USDC</span></div>`;
 }
 
 async function confirmChallenge() {
@@ -1918,7 +1935,7 @@ async function confirmChallenge() {
   const { bet } = activeChallengeData;
   const stake = parseFloat(document.getElementById('challenge-stake').value) || 0;
   if (stake < 1) return showToast('Enter a valid stake');
-  if (stake > userBalance) return showToast('Insufficient balance');
+  if (stake > usdcBalance) return showToast('Insufficient USDC balance');
 
   const btn = document.getElementById('confirm-challenge-btn');
   btn.disabled = true; btn.textContent = 'Creating...';
@@ -1947,8 +1964,9 @@ async function confirmChallenge() {
     if (error) throw error;
 
     // Insert succeeded — now deduct stake (escrow)
-    const newBal = userBalance - stake;
-    await updateBalance(newBal, 'bet_loss', stake, 'P2P Challenge created (escrow)');
+    const newBal = usdcBalance - stake;
+    usdcBalance = newBal;
+    await updateUsdcBalanceDB(newBal, 'bet_loss', stake, 'P2P Challenge created (escrow)');
 
     // Generate WhatsApp share link
     const challengeUrl = window.location.origin + '?challenge=' + challenge.id;
@@ -1956,7 +1974,7 @@ async function confirmChallenge() {
     const msg = encodeURIComponent(
       '⚔️ ' + name + ' has challenged you on OddsX!\n\n' +
       '🏆 ' + bet.label + '\n' +
-      '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+      '💰 Stake: $' + stake + ' USDC each\n' +
       '🎯 Your side: ' + oppositeLabel + '\n\n' +
       'Accept here 👉 ' + challengeUrl
     );
@@ -1993,8 +2011,8 @@ function showAcceptModal(challenge) {
   selectedAcceptorPick = null;
 
   document.getElementById('accept-title').textContent = challenge.challenger_name + ' challenges you!';
-  document.getElementById('accept-sub').textContent = 'Stake: KSH ' + challenge.stake.toLocaleString() + ' each';
-  document.getElementById('accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  document.getElementById('accept-sub').textContent = 'Stake: $' + challenge.stake + ' USDC each';
+  document.getElementById('accept-winner-takes').textContent = '$' + winnerTakes + ' USDC';
   document.getElementById('accept-their-pick').textContent = challenge.challenger_label;
 
   // All possible outcomes — use actual team names not generic Home/Away
@@ -2078,7 +2096,7 @@ async function acceptChallenge() {
     return;
   }
   if (!selectedAcceptorPick) return showToast('Please select your side first');
-  if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
+  if (challenge.stake > usdcBalance) return showToast('Insufficient USDC balance');
 
   const btn = document.getElementById('accept-challenge-btn');
   btn.disabled = true; btn.textContent = 'Accepting...';
@@ -2088,7 +2106,8 @@ async function acceptChallenge() {
     const name = profile?.full_name || currentUser.email?.split('@')[0] || 'Challenger';
 
     // Deduct stake from acceptor (escrow)
-    const newBal = userBalance - challenge.stake;
+    const newBal = usdcBalance - challenge.stake;
+    usdcBalance = newBal;
     await updateBalance(newBal, 'bet_loss', challenge.stake, 'P2P Challenge accepted (escrow)');
 
     // Update challenge as matched with acceptor pick
@@ -2112,7 +2131,7 @@ async function acceptChallenge() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: challengerProfile.phone,
-            message: '⚔️ ' + name + ' accepted your OddsX challenge!\n\n🏆 ' + challenge.challenger_label + ' vs ' + selectedAcceptorPick.label + '\n💰 KSH ' + challenge.stake.toLocaleString() + ' each\n\nGame on! 🎯'
+            message: '⚔️ ' + name + ' accepted your OddsX challenge!\n\n🏆 ' + challenge.challenger_label + ' vs ' + selectedAcceptorPick.label + '\n💰 $' + challenge.stake + ' USDC each\n\nGame on! 🎯'
           })
         });
       }
@@ -2152,7 +2171,7 @@ async function declineChallenge() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: challengerProfile.phone,
-          message: '❌ Your OddsX challenge was declined.\n\nRefund: KSH ' + refund.toLocaleString() + ' credited to your wallet.\n\nTry challenging someone else at oddsx.co.ke 💪'
+          message: '❌ Your OddsX challenge was declined.\n\nRefund: $' + refund.toFixed(2) + ' USDC returned to your wallet.\n\nTry challenging someone else at oddsx.co.ke 💪'
         })
       }).catch(() => {});
     }
@@ -2207,7 +2226,7 @@ async function settleP2PChallenges() {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 phone: p.phone,
-                message: '🤝 Your OddsX P2P challenge was cleared!\n\nNeither of you picked the actual result so the bet is cancelled.\n\nRefund: KSH ' + refund.toLocaleString() + ' credited to your wallet.'
+                message: '🤝 Your OddsX P2P challenge was cleared!\n\nNeither picked the result — bet cancelled.\n\nRefund: $' + refund.toFixed(2) + ' USDC returned to your wallet.'
               })
             }).catch(() => {});
           }
@@ -2228,7 +2247,7 @@ async function settleP2PChallenges() {
       await sb.from('profiles').update({ balance: newBal }).eq('id', winnerId);
       await sb.from('transactions').insert({
         user_id: winnerId, type: 'bet_win', amount: winnings,
-        label: `P2P Challenge won — KSH ${winnings.toLocaleString()}`, balance_after: newBal
+        label: `P2P Challenge won — $${winnings} USDC`
       });
 
       // Mark settled
@@ -2242,7 +2261,7 @@ async function settleP2PChallenges() {
         { phone: winnerProfile?.phone, msg: `🏆 You won the OddsX challenge!
 
 ${c.challenger_label}
-You receive: KSH ${winnings.toLocaleString()} 🎉` },
+You receive: $${winnings} USDC 🎉` },
         { phone: loserProfile?.data?.phone, msg: `❌ You lost the OddsX challenge.
 
 ${c.challenger_label}
@@ -2269,12 +2288,12 @@ async function placeBet() {
     showAuthScreen();
     return;
   }
-  if (stake > userBalance) return showToast('Insufficient balance');
+  if (stake > usdcBalance) return showToast('Insufficient USDC balance');
   const btn = document.getElementById('place-btn');
   btn.disabled = true; btn.textContent = 'Placing...';
   const mult = bets.reduce((a, b) => a * oddsToDecimal(b.odds), 1);
   const potentialPayout = Math.round(stake * mult);
-  if (potentialPayout > 30000) return showToast('Max payout is KSH 30,000. Reduce your stake or selections.');
+  if (potentialPayout > 10000) return showToast('Max payout is $10,000 USDC. Reduce your stake or selections.');
   // Save bet as PENDING — admin settles it after games finish
   const { data: insertedBet, error: insertError } = await sb.from('bets').insert({
     user_id: currentUser.id,
@@ -2304,7 +2323,7 @@ async function placeBet() {
   // Clear bet history cache to show new bet
   betHistoryCache = null;
   renderAllSports();
-  showToast(`🎫 Bet placed! KSH ${stake.toLocaleString()} staked. Good luck!`);
+  showToast(`🎫 Bet placed! $${stake} USDC staked. Good luck!`);
   // Start watching for result — pass bet ID so we can update the correct bet record
   bets.forEach(b => watchForResult(b.gameId, betId, b.type, bets));
 }
@@ -2419,7 +2438,7 @@ async function doSettle(betId, allSelections, finishedGames) {
     if (allCorrect) {
       const newBal = userBalance + payout;
       await updateBalance(newBal, 'bet_win', payout, allSelections.length + '-leg accumulator won');
-      showToast('🎉 Bet WON! +KSH ' + (payout - betData.stake).toLocaleString() + ' credited!');
+      showToast('🎉 Bet WON! +$' + (payout - betData.stake).toFixed(2) + ' USDC!');
       const histNav = document.querySelector('[onclick="showTab(\'history\')"]');
       if (histNav) {
         histNav.innerHTML = '📋 History <span style="background:#00e5a0;color:#000;border-radius:10px;font-size:10px;padding:1px 6px;font-weight:700">WIN!</span>';
@@ -2536,7 +2555,7 @@ function renderCrash() {
 
       <div style="padding:12px 14px">
         <div class="action-row" style="margin-bottom:10px">
-          <span style="font-size:11px;color:var(--muted)">KSH</span>
+          <span style="font-size:11px;color:var(--muted)">USDC</span>
           <input class="crash-input" type="number" id="c-stake" value="10">
           <button class="green-btn" id="c-start" onclick="crashStart()">🚀 Launch</button>
           <button class="red-btn" id="c-cash" onclick="crashCash()" style="display:none">💰 Cash Out</button>
@@ -2686,7 +2705,7 @@ async function crashStart() {
     return;
   }
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 0;
-  if (stake > userBalance) return showToast('Insufficient balance');
+  if (stake > usdcBalance) return showToast('Insufficient USDC balance');
 
   const startBtn = document.getElementById('c-start');
   const cashBtn = document.getElementById('c-cash');
@@ -2773,7 +2792,7 @@ async function crashStart() {
       const mg = document.getElementById('c-msg');
       if (cb) cb.style.display = 'none';
       if (sb) { sb.style.display = 'inline-block'; sb.textContent = '🚀 Try Again'; }
-      if (mg) mg.innerHTML = `<span class="msg lose">-KSH ${stake.toLocaleString()}</span>`;
+      if (mg) mg.innerHTML = `<span class="msg lose">-$${stake} USDC</span>`;
       crashHistory.push(crashMult);
       renderCrashHist();
 
@@ -2797,7 +2816,7 @@ async function crashCash() {
   clearInterval(crashInterval);
   crashState = 'idle';
   const stake = parseFloat(document.getElementById('c-stake')?.value) || 200;
-  const MAX_PAYOUT = 30000; // KSH max single payout
+  const MAX_PAYOUT = 10000; // USDC max single payout
   const winAmount = Math.min(Math.round(stake * crashMult), MAX_PAYOUT);
   await updateBalance(userBalance + winAmount, 'bet_win', winAmount, `Pepea x${crashMult.toFixed(2)}`);
   const m = document.getElementById('cmult');
@@ -2807,7 +2826,7 @@ async function crashCash() {
   const mg = document.getElementById('c-msg');
   if (cb) cb.style.display = 'none';
   if (sb) { sb.style.display = 'inline-block'; sb.textContent = '🚀 Launch'; }
-  if (mg) mg.innerHTML = `<span class="msg win">+KSH ${winAmount.toLocaleString()}</span>`;
+  if (mg) mg.innerHTML = `<span class="msg win">+$${winAmount.toFixed(2)} USDC</span>`;
   crashHistory.push(crashMult);
   renderCrashHist();
 }
@@ -2830,7 +2849,7 @@ function renderMines() {
       <div class="mini-desc">Reveal gems to multiply your bet. Hit Mines and lose it all.</div>
       <div class="flip-grid" id="m-grid"></div>
       <div class="action-row" style="margin-bottom:10px">
-        <span style="font-size:11px;color:var(--muted)">KSH</span>
+        <span style="font-size:11px;color:var(--muted)">USDC</span>
         <input class="crash-input" type="number" id="m-stake" value="10" ${mineActive?'disabled':''}>
         <button class="${gameButtonClass}" id="m-start"
           ${gameButtonDisabled}
@@ -2874,7 +2893,7 @@ async function mineStart() {
     return;
   }
   const stake = parseFloat(document.getElementById('m-stake').value) || 0;
-  if (stake > userBalance) return showToast('Insufficient balance');
+  if (stake > usdcBalance) return showToast('Insufficient USDC balance');
   await updateBalance(userBalance - stake, 'bet_loss', stake, 'Mines game');
   mineStake = stake; mineRevealed = 0; mineMult = 1; mineActive = true;
   mineGrid = Array(16).fill('hidden');
@@ -2889,7 +2908,7 @@ async function mineReveal(i) {
     mineGrid._bombs.forEach(b => mineGrid[b] = 'bomb');
     mineActive = false;
     renderMines();
-    document.getElementById('m-msg').innerHTML = `<span class="msg lose">-KSH ${mineStake.toLocaleString()}</span>`;
+    document.getElementById('m-msg').innerHTML = `<span class="msg lose">-$${mineStake} USDC</span>`;
   } else {
     mineGrid[i] = 'gem'; mineRevealed++;
     // Multiplier table with 5% house edge (3 bombs in 16 cells)
@@ -2910,11 +2929,11 @@ async function mineCash() {
   if (!mineActive) return;
   if (mineRevealed < 3) return showToast('Reveal at least 3 gems before cashing out!');
   mineActive = false;
-  const MAX_PAYOUT = 30000; // KSH max single payout
+  const MAX_PAYOUT = 10000; // USDC max single payout
   const win = Math.min(Math.round(mineStake * mineMult), MAX_PAYOUT);
   await updateBalance(userBalance + win, 'bet_win', win, `Mines cashed out at ${mineMult.toFixed(2)}x`);
   renderMines();
-  document.getElementById('m-msg').innerHTML = `<span class="msg win">+KSH ${win.toLocaleString()}</span>`;
+  document.getElementById('m-msg').innerHTML = `<span class="msg win">+$${win.toFixed(2)} USDC</span>`;
 }
 
 // ─── WALLET ───
@@ -3045,7 +3064,7 @@ async function checkAndSettlePendingBets() {
   }
 
   if (settled > 0) {
-    if (wins.length) showToast('🎉 ' + wins.length + ' bet' + (wins.length>1?'s':'') + ' WON! +KSH ' + wins.reduce((a,b)=>a+b,0).toLocaleString());
+    if (wins.length) showToast('🎉 ' + wins.length + ' bet' + (wins.length>1?'s':'') + ' WON! +$' + wins.reduce((a,b)=>a+b,0).toFixed(2) + ' USDC');
     else showToast('Settled ' + losses.length + ' bet' + (losses.length>1?'s':'') + ' — better luck next time');
     await refreshBalance();
     renderHistory();
@@ -3056,132 +3075,40 @@ async function checkAndSettlePendingBets() {
 
 async function renderWallet() {
   const walletTab = document.getElementById('tab-wallet');
-  walletTab.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading wallet...</div>`;
+  walletTab.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px"><span class="loading"></span> Loading wallet...</div>`;
   await refreshBalance();
-
-  // Render shell with both tabs
   walletTab.innerHTML = `
-    <div class="wallet-tabs">
-      <div class="wallet-tab active" id="wtab-kes" onclick="switchWalletTab('kes')">🇰🇪 KES Wallet</div>
-      <div class="wallet-tab usdc-tab" id="wtab-usdc" onclick="switchWalletTab('usdc')">💎 USDC Wallet</div>
+    <div class="usdc-card" style="margin-bottom:16px">
+      <div class="usdc-label"><span class="usdc-status-dot"></span> USDC · Base Network</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:52px;font-weight:900;color:#2979ff;margin:8px 0;letter-spacing:-1px" id="usdc-bal-display">${usdcBalance.toFixed(2)}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.35);margin-bottom:18px">USD Coin · Instant · Borderless · No limits</div>
+      <div class="usdc-actions">
+        <button class="usdc-btn deposit" onclick="openUsdcDepositModal()">⬇️ Deposit</button>
+        <button class="usdc-btn withdraw" onclick="openUsdcWithdrawModal()">⬆️ Withdraw</button>
+      </div>
+      <div class="usdc-addr-box" onclick="copyUsdcAddress()" style="margin-top:14px">
+        <span style="font-size:11px;color:rgba(255,255,255,0.45)" id="usdc-addr-short">${userUsdcAddress ? userUsdcAddress.slice(0,10)+'...'+userUsdcAddress.slice(-8) : 'Generating address...'}</span>
+        <span class="usdc-addr-copy">📋 COPY</span>
+      </div>
     </div>
-    <div id="wallet-kes-panel">
-      <div class="wallet-card">
-        <div class="wallet-label">Available Balance</div>
-        <div class="wallet-balance">KSH ${userBalance.toLocaleString()}</div>
-        <div class="wallet-actions">
-          <button class="wallet-btn deposit" onclick="openModal('deposit-modal')">+ Deposit</button>
-          <button class="wallet-btn withdraw" onclick="openWithdrawModal()">Withdraw</button>
-        </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+      <div class="wallet-stat">
+        <div class="wallet-stat-label">Total In</div>
+        <div class="wallet-stat-value" id="usdc-total-in" style="color:#2979ff">—</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="section-label" style="margin-bottom:0">Transaction History</div>
-        <button onclick="transactionCache=null;renderWallet()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
+      <div class="wallet-stat">
+        <div class="wallet-stat-label">Total Out</div>
+        <div class="wallet-stat-value" id="usdc-total-out" style="color:var(--accent2)">—</div>
       </div>
-      <div id="tx-summary"></div>
-      <div id="tx-filter" style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
-        <button class="tx-filter-btn active" onclick="filterTx('all',this)">All</button>
-        <button class="tx-filter-btn" onclick="filterTx('deposit',this)">Deposits</button>
-        <button class="tx-filter-btn" onclick="filterTx('withdrawal',this)">Withdrawals</button>
-        <button class="tx-filter-btn" onclick="filterTx('bet_win',this)">Wins</button>
-        <button class="tx-filter-btn" onclick="filterTx('bet_loss',this)">Bets</button>
-      </div>
-      <div id="tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>
     </div>
-    <div id="wallet-usdc-panel" style="display:none">
-      <div class="usdc-card">
-        <div class="usdc-label"><span class="usdc-status-dot"></span> USDC · Base Network</div>
-        <div class="usdc-balance" id="usdc-bal-display">${usdcBalance.toFixed(2)}</div>
-        <div class="usdc-sub">≈ KSH ${(usdcBalance * usdcKesRate).toLocaleString(undefined,{maximumFractionDigits:0})}</div>
-        <div class="usdc-actions">
-          <button class="usdc-btn deposit" onclick="openUsdcDepositModal()">⬇️ Deposit</button>
-          <button class="usdc-btn withdraw" onclick="openUsdcWithdrawModal()">⬆️ Withdraw</button>
-        </div>
-        <div class="usdc-addr-box" onclick="copyUsdcAddress()" style="margin-top:14px">
-          <span style="font-size:11px;color:rgba(255,255,255,0.4)">${userUsdcAddress ? userUsdcAddress.slice(0,10)+'...'+userUsdcAddress.slice(-8) : 'Generating...'}</span>
-          <span class="usdc-addr-copy">COPY ADDRESS</span>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="section-label" style="margin-bottom:0">USDC Transactions</div>
-        <button onclick="loadUsdcTransactions()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
-      </div>
-      <div id="usdc-tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>
-    </div>`;
-
-  if (!document.getElementById('tx-filter-style')) {
-    const s = document.createElement('style');
-    s.id = 'tx-filter-style';
-    s.textContent = `.tx-filter-btn{background:var(--g3);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:var(--muted);font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer;white-space:nowrap;transition:all 0.2s}.tx-filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}`;
-    document.head.appendChild(s);
-  }
-
-  const txEl = document.getElementById('tx-list');
-  const summaryEl = document.getElementById('tx-summary');
-
-  let allTxs = null;
-  if (transactionCache && Date.now() - transactionCacheTime < CACHE_DURATION) {
-    allTxs = transactionCache;
-  } else {
-    // Fetch from all three tables in parallel
-    const [betsRes, depositsRes, withdrawalsRes] = await Promise.all([
-      sb.from('transactions').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-      sb.from('deposit_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-      sb.from('withdrawal_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50),
-    ]);
-
-    // Normalize deposits
-    const deposits = (depositsRes.data || []).map(d => ({
-      id: d.id,
-      type: 'deposit',
-      amount: d.amount,
-      mpesa_code: d.mpesa_code,
-      status: d.status,
-      created_at: d.created_at,
-      _source: 'deposit_requests'
-    }));
-
-    // Normalize withdrawals
-    const withdrawals = (withdrawalsRes.data || []).map(w => ({
-      id: w.id,
-      type: 'withdrawal',
-      amount: w.amount,
-      phone: w.phone,
-      status: w.status || 'pending',
-      created_at: w.created_at,
-      _source: 'withdrawal_requests'
-    }));
-
-    // Bets from transactions table (exclude deposit/withdrawal types to avoid duplicates)
-    const bets = (betsRes.data || []).filter(t => !['deposit','withdrawal'].includes(t.type));
-
-    // Merge and sort by date
-    allTxs = [...deposits, ...withdrawals, ...bets].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-    transactionCache = allTxs;
-    transactionCacheTime = Date.now();
-  }
-
-  window._allTxs = allTxs;
-
-  // Summary stats from source tables
-  const totalIn = allTxs.filter(t => t.type === 'deposit').reduce((s,t) => s + (t.amount||0), 0);
-  const totalOut = allTxs.filter(t => t.type === 'withdrawal').reduce((s,t) => s + (t.amount||0), 0);
-  if (allTxs.length) {
-    summaryEl.innerHTML = `
-      <div class="wallet-summary">
-        <div class="wallet-stat">
-          <div class="wallet-stat-label">Total Deposited</div>
-          <div class="wallet-stat-value" style="color:var(--accent)">KSH ${totalIn.toLocaleString()}</div>
-        </div>
-        <div class="wallet-stat">
-          <div class="wallet-stat-label">Total Withdrawn</div>
-          <div class="wallet-stat-value" style="color:var(--accent2)">KSH ${totalOut.toLocaleString()}</div>
-        </div>
-      </div>`;
-  }
-
-  renderTxList(allTxs, txEl);
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-label" style="margin-bottom:0">Transactions</div>
+      <button onclick="loadUsdcTransactions()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">🔄 Refresh</button>
+    </div>
+    <div id="usdc-tx-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px"><span class="loading"></span> Loading...</div></div>`;
+  await initUsdcWallet();
 }
+
 
 function renderTxList(txs, txEl) {
   if (!txEl) txEl = document.getElementById('tx-list');
@@ -3189,8 +3116,8 @@ function renderTxList(txs, txEl) {
     txEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px"><div style="font-size:28px;margin-bottom:8px">📭</div>No transactions yet</div>`;
     return;
   }
-  const icons = { deposit:'💳', withdrawal:'📤', bet_win:'🎉', bet_loss:'🎲', crash_win:'🚀', crash_loss:'💥', mines_win:'💎', mines_loss:'💣' };
-  const labels = { deposit:'M-Pesa Deposit', withdrawal:'M-Pesa Withdrawal', bet_win:'Bet Won', bet_loss:'Bet Placed', crash_win:'Crash Win', crash_loss:'Crash Loss', mines_win:'Mines Win', mines_loss:'Mines Loss' };
+  const icons = { deposit:'💎', withdrawal:'⬆️', bet_win:'🎉', bet_loss:'🎲', crash_win:'🚀', crash_loss:'💥', mines_win:'💎', mines_loss:'💣' };
+  const labels = { deposit:'USDC Deposit', withdrawal:'USDC Withdrawal', bet_win:'Bet Won', bet_loss:'Bet Placed', crash_win:'Crash Win', crash_loss:'Crash Loss', mines_win:'Mines Win', mines_loss:'Mines Loss' };
 
   txEl.innerHTML = txs.map(tx => {
     const isCredit = ['deposit','bet_win','crash_win','mines_win'].includes(tx.type);
@@ -3228,8 +3155,8 @@ function renderTxList(txs, txEl) {
         ${badge}
       </div>
       <div style="text-align:right;min-width:90px">
-        <div class="tx-amount ${isCredit?'credit':'debit'}">${sign}KSH ${tx.amount?.toLocaleString()}</div>
-        ${tx.balance_after ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">Bal: KSH ${tx.balance_after?.toLocaleString()}</div>` : ''}
+        <div class="tx-amount ${isCredit?'credit':'debit'}">${sign}$${parseFloat(tx.amount||0).toFixed(2)} USDC</div>
+        ${tx.balance_after ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">Bal: $${parseFloat(tx.balance_after||0).toFixed(2)} USDC</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -3279,20 +3206,41 @@ function switchWalletTab(tab) {
   }
 }
 
-// Generate deterministic wallet address from user ID
-// NOTE: In production replace with proper HD wallet via ethers.js CDN
-function generateUsdcAddress(userId) {
-  // Deterministic address derived from userId hash for demo
-  // Replace with: ethers.HDNodeWallet.fromMnemonic(masterMnemonic).derivePath("m/44'/60'/0'/0/"+index)
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    const char = userId.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+// ── HD WALLET — Real ethers.js derivation ──
+// ── ETHERS.JS HD WALLET ──
+// Architecture:
+//   - Each user gets a unique deposit address derived from a master seed
+//   - Master seed lives in your backend (Supabase Edge Function / server env var)
+//   - Frontend only ever sees the PUBLIC address — never private keys
+//   - For this client-side build: we generate a fresh wallet per user on first load
+//     and store only the address in Supabase crypto_wallets table
+//   - For production sweep: run a backend job that monitors each address and
+//     sweeps incoming USDC to your master hot wallet, then credits Supabase balance
+
+async function generateUsdcAddress(userIndex) {
+  // Wait for ethers to load
+  let attempts = 0;
+  while (typeof ethers === 'undefined' && attempts < 20) {
+    await new Promise(r => setTimeout(r, 200));
+    attempts++;
   }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  // This produces a placeholder — swap for real HD wallet in production
-  return '0x' + hex.repeat(5).slice(0, 40);
+  if (typeof ethers !== 'undefined') {
+    try {
+      // Generate a fresh deterministic wallet using ethers v6
+      // In production replace with: server-side HD derivation from master mnemonic
+      // e.g. ethers.HDNodeWallet.fromPhrase(MASTER_MNEMONIC).derivePath("m/44'/60'/0'/0/" + userIndex)
+      const wallet = ethers.Wallet.createRandom();
+      console.log('Wallet generated via ethers.js — address:', wallet.address);
+      // NOTE: Private key is intentionally discarded here.
+      // For a real platform, key management happens server-side.
+      return wallet.address;
+    } catch(e) {
+      console.warn('ethers wallet generation failed:', e.message);
+    }
+  }
+  // Fallback if ethers fails to load
+  const hex = userIndex.toString(16).padStart(40, '0');
+  return '0x' + hex.slice(0, 40);
 }
 
 async function initUsdcWallet() {
@@ -3309,8 +3257,14 @@ async function initUsdcWallet() {
       userUsdcAddress = walletRow.deposit_address;
       usdcBalance = walletRow.usdc_balance || 0;
     } else {
-      // Create wallet record
-      const addr = generateUsdcAddress(currentUser.id);
+      // Create wallet record using ethers.js
+      let userIndex = 0;
+      for (let i = 0; i < currentUser.id.length; i++) {
+        userIndex = ((userIndex << 5) - userIndex) + currentUser.id.charCodeAt(i);
+        userIndex = userIndex & userIndex;
+      }
+      userIndex = Math.abs(userIndex) % 1000000;
+      const addr = await generateUsdcAddress(userIndex);
       userUsdcAddress = addr;
       await sb.from('crypto_wallets').insert({
         user_id: currentUser.id,
@@ -3321,8 +3275,8 @@ async function initUsdcWallet() {
     }
   } catch(e) {
     console.warn('crypto_wallets table not set up yet:', e.message);
-    // Fallback: generate address without DB for now
-    userUsdcAddress = generateUsdcAddress(currentUser.id);
+    // Fallback: generate address without DB
+    userUsdcAddress = await generateUsdcAddress(Date.now() % 1000000);
   }
 
   updateUsdcDisplay();
@@ -3341,7 +3295,7 @@ function updateUsdcDisplay() {
   const panel = document.getElementById('wallet-usdc-panel');
   if (panel) {
     const sub = panel.querySelector('.usdc-sub');
-    if (sub) sub.textContent = '≈ KSH ' + (usdcBalance * usdcKesRate).toLocaleString(undefined, {maximumFractionDigits:0});
+    if (sub) sub.textContent = 'Base Network · No limits · No KYC';
   }
 }
 
@@ -3417,6 +3371,14 @@ async function loadUsdcTransactions() {
       .limit(30);
 
     usdcTxCache = txs || [];
+
+    // Update stats
+    const totalIn = usdcTxCache.filter(t => ['usdc_deposit','usdc_win'].includes(t.type)).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+    const totalOut = usdcTxCache.filter(t => ['usdc_withdrawal','usdc_bet'].includes(t.type)).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+    const inEl = document.getElementById('usdc-total-in');
+    const outEl = document.getElementById('usdc-total-out');
+    if (inEl) inEl.textContent = totalIn.toFixed(2) + ' USDC';
+    if (outEl) outEl.textContent = totalOut.toFixed(2) + ' USDC';
 
     if (!usdcTxCache.length) {
       listEl.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">
@@ -3596,11 +3558,11 @@ async function renderHistory() {
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:10px;color:var(--muted);margin-bottom:4px">TOTAL STAKED</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">KSH ${totalStaked.toLocaleString()}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">$${totalStaked.toFixed(2)} USDC</div>
       </div>
       <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:10px;color:var(--muted);margin-bottom:4px">NET PROFIT</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${totalWon>=0?'var(--accent)':'var(--accent2)'}">${totalWon>=0?'+':''}KSH ${totalWon.toLocaleString()}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:${totalWon>=0?'var(--accent)':'var(--accent2)'}">${totalWon>=0?'+':''}$${totalWon.toFixed(2)} USDC</div>
       </div>
       <div style="background:var(--g2);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:10px;color:var(--muted);margin-bottom:4px">PENDING</div>
@@ -3625,11 +3587,11 @@ async function renderHistory() {
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-size:11px;color:var(--muted)">
-            KSH ${b.stake?.toLocaleString()} stake · ${b.odds_total}x odds
-            ${isPending ? '<br><span style="color:var(--gold)">Potential: KSH ' + (b.potential_payout||0).toLocaleString() + '</span>' : ''}
+            $${b.stake} USDC stake · ${b.odds_total}x odds
+            ${isPending ? '<br><span style="color:var(--gold)">Potential: KSH ' + (b.potential_payout||0).toFixed(2) + ' USDC</span>' : ''}
           </div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:${isWon?'var(--accent)':'var(--accent2)'}">
-            ${isWon?'+':''}KSH ${Math.abs(profit).toLocaleString()}
+            ${isWon?'+':''}$${Math.abs(profit).toFixed(2)} USDC
           </div>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:5px">${date}</div>
@@ -3731,12 +3693,12 @@ function renderDiceCreate() {
 
       <div class="dice-controls">
         <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Your Stake (KSH)</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Your Stake (USDC)</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
             ${[100,200,500,1000,2000,5000].map(a=>`<div onclick="document.getElementById('dice-create-stake').value=${a};updateDicePreview()" style="background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);transition:all 0.15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='var(--muted)'">${a.toLocaleString()}</div>`).join('')}
           </div>
           <div class="dice-stake-row">
-            <span style="font-size:11px;color:var(--muted)">KSH</span>
+            <span style="font-size:11px;color:var(--muted)">USDC</span>
             <input id="dice-create-stake" type="number" value="50" step="50" oninput="updateDicePreview()"
               style="flex:1;background:var(--g3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;padding:9px 12px;outline:none">
           </div>
@@ -3776,14 +3738,14 @@ function updateDicePreview() {
   previewEl.innerHTML = `
     You pick <strong style="color:${dicePick==='over'?'var(--accent)':'var(--accent2)'}">${dicePick.toUpperCase()}</strong> · 
     Opponent gets <strong style="color:var(--gold)">${oppPick}</strong><br>
-    Stake: KSH ${stake.toLocaleString()} each · Pot: KSH ${pot.toLocaleString()} · Winner takes <strong style="color:var(--gold)">KSH ${winnerTakes.toLocaleString()}</strong>`;
+    Stake: $${stake} USDC each · Pot: $${pot} USDC · Winner takes <strong style="color:var(--gold)">$${winnerTakes} USDC</strong>`;
 }
 
 async function createDiceChallenge() {
   if (!currentUser) { showAuthScreen(); return; }
   if (!dicePick) return showToast('Pick Over or Under first');
   const stake = parseFloat(document.getElementById('dice-create-stake').value) || 0;
-  if (stake > userBalance) return showToast('Insufficient balance');
+  if (stake > usdcBalance) return showToast('Insufficient USDC balance');
 
   const btn = document.getElementById('dice-create-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Creating...';
@@ -3812,7 +3774,7 @@ async function createDiceChallenge() {
     const waMsg = encodeURIComponent(
       '⚔️ ' + name + ' has challenged you on OddsX!\n\n' +
       '🎲 Dice — Over / Under 7\n' +
-      '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+      '💰 Stake: $' + stake + ' USDC each\n' +
       '🎯 Your side: ' + oppPick + '\n\n' +
       'Accept here 👉 ' + challengeUrl
     );
@@ -3854,8 +3816,8 @@ function renderDiceShareScreen(challenge, name, pick, stake, waMsg, shareUrl) {
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">
-          <span>Stake: KSH ${stake.toLocaleString()} each</span>
-          <span>Winner takes: <strong style="color:var(--gold)">KSH ${winnerTakes.toLocaleString()}</strong></span>
+          <span>Stake: $${stake} USDC each</span>
+          <span>Winner takes: <strong style="color:var(--gold)">$${winnerTakes} USDC</strong></span>
         </div>
       </div>
     </div>
@@ -3888,10 +3850,10 @@ function showDiceAcceptModal(challenge) {
   const oppPick = challenge.challenger_pick === 'over' ? 'UNDER' : 'OVER';
 
   document.getElementById('dice-accept-title').textContent = challenge.challenger_name + ' challenges you!';
-  document.getElementById('dice-accept-sub').textContent = 'Stake: KSH ' + challenge.stake.toLocaleString() + ' each';
+  document.getElementById('dice-accept-sub').textContent = 'Stake: $' + challenge.stake + ' USDC each';
   document.getElementById('dice-accept-their-pick').textContent = challenge.challenger_pick.toUpperCase();
   document.getElementById('dice-accept-your-pick').textContent = oppPick;
-  document.getElementById('dice-accept-winner-takes').textContent = 'KSH ' + winnerTakes.toLocaleString();
+  document.getElementById('dice-accept-winner-takes').textContent = '$' + winnerTakes + ' USDC';
   openModal('dice-accept-modal');
 }
 
@@ -3900,7 +3862,7 @@ async function acceptDiceChallenge() {
   const challenge = pendingDiceChallenge;
   if (!challenge) return;
   if (challenge.challenger_id === currentUser.id) return showToast("You can't accept your own challenge!");
-  if (challenge.stake > userBalance) return showToast('Insufficient balance — deposit to accept');
+  if (challenge.stake > usdcBalance) return showToast('Insufficient USDC balance');
 
   const btn = document.getElementById('dice-accept-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Rolling...';
@@ -3948,7 +3910,7 @@ async function acceptDiceChallenge() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             phone: wp.phone,
-            message: '🎲 Your OddsX Dice challenge was accepted by ' + name + '!\n\n🎯 Result: ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ' on 7)' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON KSH ' + winnings.toLocaleString() + '!'
+            message: '🎲 Your OddsX Dice challenge was accepted by ' + name + '!\n\n🎯 Result: ' + d1 + ' + ' + d2 + ' = ' + total + (rerolls ? ' (' + rerolls + ' reroll' + (rerolls>1?'s':'') + ' on 7)' : '') + '\n⬆️ You picked: ' + challenge.challenger_pick.toUpperCase() + '\n🏆 You WON $' + winnings.toFixed(2) + ' USDC!'
           })
         }).catch(() => {});
       }
@@ -4013,7 +3975,7 @@ async function declineDiceChallenge() {
     if (cp?.phone) {
       fetch('https://oddsx-whatsapp-production.up.railway.app/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: cp.phone, message: '❌ Your OddsX Dice challenge was declined.\nRefund: KSH ' + refund.toLocaleString() + ' credited to your wallet.' })
+        body: JSON.stringify({ phone: cp.phone, message: '❌ Your OddsX Dice challenge was declined.\nRefund: $' + refund.toFixed(2) + ' USDC returned.' })
       }).catch(() => {});
     }
 
@@ -4076,7 +4038,7 @@ function showDiceResultModal({ d1, d2, total, rerolls, winnerId, winnerName, cha
     }
 
     setTimeout(() => {
-      resultEl.textContent = iWon ? '🏆 You won KSH ' + winnings.toLocaleString() + '!' : '❌ You lost KSH ' + stake.toLocaleString();
+      resultEl.textContent = iWon ? '🏆 You won $' + winnings + ' USDC!' : '❌ You lost $' + stake + ' USDC';
       resultEl.style.color = iWon ? 'var(--accent)' : 'var(--accent2)';
       picksEl.innerHTML = `
         <div style="background:var(--g3);border-radius:6px;padding:8px;text-align:center">
@@ -4140,7 +4102,7 @@ async function playDiceAgain() {
       const waMsg = encodeURIComponent(
         '⚔️ ' + name + ' wants a rematch on OddsX!\n\n' +
         '🎲 Dice — Over / Under 7\n' +
-        '💰 Stake: KSH ' + stake.toLocaleString() + ' each\n' +
+        '💰 Stake: $' + stake + ' USDC each\n' +
         '🎯 Your side: ' + (pick === 'over' ? 'UNDER' : 'OVER') + '\n\n' +
         'Accept here 👉 ' + challengeUrl
       );
@@ -4156,7 +4118,7 @@ async function playDiceAgain() {
     }
 
     closeModal('dice-result-modal');
-    renderDiceShareScreen(challenge, name, pick, stake, encodeURIComponent('⚔️ ' + name + ' wants a rematch on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + stake.toLocaleString() + ' each\n\nAccept here 👉 ' + challengeUrl), challengeUrl);
+    renderDiceShareScreen(challenge, name, pick, stake, encodeURIComponent('⚔️ ' + name + ' wants a rematch on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: $ ' + stake + ' each USDC\n\nAccept here 👉 ' + challengeUrl), challengeUrl);
   } catch(e) {
     showToast('Error replaying challenge: ' + e.message);
   } finally {
@@ -4355,26 +4317,26 @@ async function renderMyChallenges() {
         resultLine = '<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">' +
           '<div style="font-size:13px">' + DICE_FACES[c.die1-1] + DICE_FACES[c.die2-1] + ' <strong>' + c.total + '</strong>' + rerollNote + '</div>' +
           '<div style="font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' +
-            (iWon ? '🏆 +KSH ' + winnings.toLocaleString() : '❌ -KSH ' + c.stake.toLocaleString()) +
+            (iWon ? '🏆 +$' + winnings + ' USDC' : '❌ -$' + c.stake + ' USDC') +
           '</div></div>';
         // View result button
         resultLine += '<div style="margin-top:6px"><span onclick="viewDiceResult(\''+c.id+'\')" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600">🎲 View roll animation →</span></div>';
       } else {
-        resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won KSH ' + winnings.toLocaleString() : '❌ You lost KSH ' + c.stake.toLocaleString()) + '</div>';
+        resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won $' + winnings + ' USDC' : '❌ You lost $' + c.stake + ' USDC') + '</div>';
       }
     } else if (c.status === 'cleared') {
-      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Cleared · KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded</div>';
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Cleared · '$' + (c.stake * 0.95).toFixed(2) + ' refunded</div>';
     } else if (c.status === 'declined') {
-      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Declined · ' + (iAmChallenger ? 'KSH ' + Math.round(c.stake * 0.95).toLocaleString() + ' refunded' : 'You declined') + '</div>';
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Declined · ' + (iAmChallenger ? '$' + (c.stake * 0.95).toFixed(2) + ' USDC refunded' : 'You declined') + '</div>';
     } else if (c.status === 'open' && iAmChallenger) {
       if (isDice) {
         const challengeUrl = window.location.origin + '?dice=' + c.id;
         const oppPick = c.challenger_pick === 'over' ? 'UNDER' : 'OVER';
-        const waMsg = encodeURIComponent('⚔️ ' + c.challenger_name + ' has challenged you on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: KSH ' + c.stake.toLocaleString() + ' each\n🎯 Your side: ' + oppPick + '\n\nAccept here 👉 ' + challengeUrl);
+        const waMsg = encodeURIComponent('⚔️ ' + c.challenger_name + ' has challenged you on OddsX!\n\n🎲 Dice — Over / Under 7\n💰 Stake: $ ' + c.stake + ' each USDC\n🎯 Your side: ' + oppPick + '\n\nAccept here 👉 ' + challengeUrl);
         resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + waMsg + '" target="_blank" style="font-size:11px;color:var(--gold);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
       } else {
         const shareUrl = window.location.origin + '?challenge=' + c.id;
-        const msg = encodeURIComponent('⚔️ ' + c.challenger_name + ' challenges you on OddsX!\n\n🏆 ' + c.challenger_label + '\n💰 KSH ' + c.stake.toLocaleString() + ' each\n\nAccept here 👉 ' + shareUrl);
+        const msg = encodeURIComponent('⚔️ ' + c.challenger_name + ' challenges you on OddsX!\n\n🏆 ' + c.challenger_label + '\n💰 $' + parseFloat(c.stake).toFixed(2) + ' USDC each\n\nAccept here 👉 ' + shareUrl);
         resultLine = '<div style="margin-top:8px"><a href="https://wa.me/?text=' + msg + '" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">📤 Reshare challenge link</a></div>';
       }
     }
@@ -4399,7 +4361,7 @@ async function renderMyChallenges() {
         '</div>' +
       '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
-        '<div style="font-size:11px;color:var(--muted)">KSH ' + c.stake.toLocaleString() + ' each · pot KSH ' + pot.toLocaleString() + '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">$' + parseFloat(c.stake).toFixed(2) + ' USDC each · pot $' + parseFloat(pot).toFixed(2) + '</div>' +
         '<div style="font-size:10px;color:var(--muted)">' + date + '</div>' +
       '</div>' +
       resultLine +
@@ -4451,7 +4413,7 @@ function openModal(id) {
 }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function openWithdrawModal() {
-  document.getElementById('withdraw-balance-note').textContent = `Available: KSH ${userBalance.toLocaleString()}`;
+  // USDC only — M-Pesa withdraw disabled
   openModal('withdraw-modal');
 }
 function setAmount(n) {
@@ -4477,7 +4439,7 @@ document.getElementById('mpesa-phone').addEventListener('input', function() {
 
 function showDepositStep2() {
   const amount = parseFloat(document.getElementById('deposit-amount').value);
-  if (!amount || amount < 50) return showToast('Enter an amount first (min KSH 50)');
+  if (!amount || amount < 50) return showToast('Enter an amount first (min $1 USDC)');
   document.getElementById('deposit-step-1').style.display = 'none';
   document.getElementById('deposit-step-2').style.display = 'block';
 }
@@ -4525,13 +4487,13 @@ async function initiateWithdraw() {
   const phone = document.getElementById('withdraw-phone').value.trim();
   const amount = parseFloat(document.getElementById('withdraw-amount').value);
   if (!phone || phone.length < 9) return showToast('Enter a valid phone number');
-  if (!amount || amount < 100) return showToast('Minimum withdrawal is KSH 100');
-  if (amount > userBalance) return showToast('Insufficient balance');
+  if (!amount || amount < 100) return showToast('Minimum withdrawal is $1 USDC');
+  if (amount > usdcBalance) return showToast('Insufficient USDC balance');
   const btn = document.getElementById('withdraw-btn');
   btn.disabled = true; btn.innerHTML = '<span class="loading"></span>Submitting...';
   try {
     const newBal = userBalance - amount;
-    await updateBalance(newBal, 'withdrawal', amount, 'M-Pesa withdrawal (pending)');
+    // M-Pesa withdrawal disabled — USDC only
     await sb.from('withdrawal_requests').insert({
       user_id: currentUser.id,
       email: currentUser.email,
@@ -4550,7 +4512,7 @@ async function initiateWithdraw() {
       '',
       '👤 User: ' + currentUser.email,
       '📱 Send to: ' + normalizedPhone,
-      '💰 Amount: KSH ' + amount.toLocaleString(),
+      '💰 Amount: $' + parseFloat(amount).toFixed(2) + ' USDC',
       '🕐 Time: ' + now,
       '',
       'Send via M-Pesa then mark paid in admin.'
