@@ -4325,7 +4325,7 @@ async function renderMyChallenges() {
         resultLine = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:' + (iWon ? 'var(--accent)' : 'var(--danger)') + '">' + (iWon ? '🏆 You won $' + winnings + ' USDC' : '❌ You lost $' + c.stake + ' USDC') + '</div>';
       }
     } else if (c.status === 'cleared') {
-      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Cleared · '$' + (c.stake * 0.95).toFixed(2) + ' refunded</div>';
+      resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">🤝 Cleared · $' + (c.stake * 0.95).toFixed(2) + ' refunded</div>';
     } else if (c.status === 'declined') {
       resultLine = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">❌ Declined · ' + (iAmChallenger ? '$' + (c.stake * 0.95).toFixed(2) + ' USDC refunded' : 'You declined') + '</div>';
     } else if (c.status === 'open' && iAmChallenger) {
